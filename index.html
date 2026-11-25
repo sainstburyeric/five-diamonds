@@ -48,16 +48,29 @@ label{font-size:14px;color:var(--mute);display:block;margin:12px 0 6px}
 /* table */
 .bar{display:flex;gap:10px;align-items:center;margin-bottom:6px}.bar .info{flex:1;line-height:1.3}.bar .b-ghost{padding:0 14px}
 .code{background:rgba(0,0,0,.25);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--line);letter-spacing:.14em;font-size:22px;padding:0 14px}
-.table{position:relative;height:clamp(340px,96vw,450px);margin:4px 0 8px}
-.rim{position:absolute;inset:7% 3%;border-radius:50%;background:var(--rail);box-shadow:0 18px 40px rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.14)}
-.baize{position:absolute;inset:10% 6%;border-radius:50%;background:radial-gradient(70% 60% at 50% 38%,var(--felt),var(--felt2));box-shadow:inset 0 8px 26px rgba(0,0,0,.38)}
-.mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;width:40%}
-.pot{font-size:clamp(30px,9vw,46px);line-height:1;color:var(--brass);white-space:nowrap}
-.ring{width:60px;height:60px;margin:6px auto 0;display:block}
+
+
+
+
+.potbox{display:flex;align-items:center;justify-content:center;gap:clamp(10px,4vw,22px);margin:10px 0 14px;padding:16px 12px;border-radius:20px;
+ background:radial-gradient(80% 120% at 50% 0%,var(--felt),var(--felt2));box-shadow:inset 0 0 0 2px rgba(0,0,0,.25),inset 0 8px 24px rgba(0,0,0,.3),0 0 0 5px var(--rail),0 12px 28px rgba(0,0,0,.3)}
+.potnum{position:relative;text-align:center;min-width:6.2em}
+.pot{font-size:clamp(44px,13vw,64px);line-height:1;color:var(--brass);white-space:nowrap;font-variant-numeric:tabular-nums;text-shadow:0 3px 0 rgba(0,0,0,.25)}
+.delta{position:absolute;left:50%;top:-6px;transform:translateX(-50%);font-weight:800;color:var(--brass);opacity:0;pointer-events:none;white-space:nowrap}
+.delta.go{animation:rise 1.4s ease-out}
+@keyframes rise{0%{opacity:0;transform:translate(-50%,10px)}15%{opacity:1}100%{opacity:0;transform:translate(-50%,-26px)}}
+.stack{position:relative;width:84px;height:62px;flex:none}
+.chip{position:absolute;width:30px;height:13px;border-radius:50%;box-shadow:0 2px 0 rgba(0,0,0,.35),inset 0 0 0 2px rgba(255,255,255,.55)}
+.chip::after{content:"";position:absolute;inset:3px 8px;border-radius:50%;border:1.5px dashed rgba(255,255,255,.7)}
+.chip.c0{background:var(--brass)}.chip.c1{background:var(--ruby2)}.chip.c2{background:#f4efe2}.chip.c2::after{border-color:rgba(0,0,0,.25)}
+@media(prefers-reduced-motion:no-preference){.chip.drop{animation:drop .45s cubic-bezier(.3,1.4,.6,1) both}@keyframes drop{from{transform:translateY(-40px);opacity:0}}}
+.seats{display:grid;gap:8px;margin-bottom:6px}
+.ring{width:60px;height:60px;flex:none;display:block}
 .ring text{font:800 18px Figtree,sans-serif;fill:var(--ink)}
-.seat{position:absolute;transform:translate(-50%,-50%);width:82px;text-align:center;font-size:13px;line-height:1.25}
+.seat{position:relative;text-align:center;font-size:13px;line-height:1.25;background:rgba(0,0,0,.22);border-radius:14px;padding:10px 4px 8px;box-shadow:inset 0 0 0 1.5px var(--line)}
+.seat.me{box-shadow:inset 0 0 0 2px var(--brass)}
 .av{width:40px;height:40px;border-radius:50%;margin:0 auto 2px;display:grid;place-items:center;font-weight:800;font-size:17px;background:var(--c);color:#14110a;box-shadow:0 0 0 3px rgba(0,0,0,.3)}
-.seat.me .av{box-shadow:0 0 0 3px var(--brass),0 0 0 6px rgba(0,0,0,.3)}
+.seat.me .av{box-shadow:0 0 0 3px var(--brass)}
 .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ch{color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
 .seat.gone{opacity:.45}
@@ -66,7 +79,7 @@ label{font-size:14px;color:var(--mute);display:block;margin:12px 0 6px}
 .pip.on{background:var(--ruby);box-shadow:0 0 6px rgba(255,71,112,.6)}
 .tag{display:inline-block;font-size:12px;font-weight:800;border-radius:99px;padding:1px 8px;background:rgba(0,0,0,.32);white-space:nowrap}
 .tag.in{background:var(--brass);color:#1a1205}.tag.ok{background:#e4f5ea;color:#0b3d2e}.tag.pay{background:var(--ruby2);color:#fff}
-.dealer{position:absolute;top:-6px;right:10px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--cink);font-size:12px;font-weight:800;display:grid;place-items:center;box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.dealer{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:var(--card);color:var(--cink);font-size:12px;font-weight:800;display:grid;place-items:center;box-shadow:0 2px 0 rgba(0,0,0,.3)}
 /* cards */
 .cards{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .card{width:56px;height:80px;border-radius:9px;background:var(--card);color:var(--cink);position:relative;display:inline-block;flex:none;padding:0;min-height:0;
@@ -102,7 +115,7 @@ details[open]{padding-bottom:14px}
 #toast.on{opacity:1}
 @media(prefers-reduced-motion:no-preference){.card{transition:transform .15s}.deal .hand .card,.deal .slot .card{animation:dealt .4s both}.deal .card:nth-child(2){animation-delay:.06s}.deal .card:nth-child(3){animation-delay:.12s}.deal .card:nth-child(4){animation-delay:.18s}.deal .card:nth-child(5){animation-delay:.24s}.deal .card:nth-child(6){animation-delay:.3s}
  @keyframes dealt{from{transform:translateY(-18px) rotate(-6deg);opacity:0}}}
-@media(max-width:400px){.seat{width:72px;font-size:12px}.av{width:34px;height:34px;font-size:15px}.card{width:50px;height:72px}.card i{font-size:26px}}
+@media(max-width:400px){.seat{font-size:12px}.av{width:34px;height:34px;font-size:15px}.stack{width:70px;transform:scale(.85);transform-origin:center}.card{width:50px;height:72px}.card i{font-size:26px}}
 </style>
 </head>
 <body>
@@ -133,19 +146,16 @@ details[open]{padding-bottom:14px}
   <button class="code" id="codeBtn" aria-label="Copy table code">····</button><span class="info" id="info"></span>
   <button class="b-ghost" id="leaveBtn">Leave</button>
  </div>
- <div class="table">
-  <div class="rim"></div><div class="baize"></div>
-  <div class="mid">
-   <div class="pot" id="potNum">0</div>
-   <div class="info" id="phase">Pot</div>
-   <svg class="ring" id="ring" viewBox="0 0 64 64" aria-hidden="true">
-    <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="6"/>
-    <circle id="arc" cx="32" cy="32" r="27" fill="none" stroke="#f2c057" stroke-width="6" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="0" transform="rotate(-90 32 32)"/>
-    <text id="secs" x="32" y="38" text-anchor="middle"></text>
-   </svg>
-  </div>
-  <div id="seats"></div>
+ <div class="potbox" aria-live="polite">
+  <div class="stack" id="stack" aria-hidden="true"></div>
+  <div class="potnum"><span class="delta" id="potDelta" aria-hidden="true"></span><div class="pot" id="potNum">0</div><div class="info" id="phase">Pot</div></div>
+  <svg class="ring" id="ring" viewBox="0 0 64 64" aria-hidden="true">
+   <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="6"/>
+   <circle id="arc" cx="32" cy="32" r="27" fill="none" stroke="#f2c057" stroke-width="6" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="0" transform="rotate(-90 32 32)"/>
+   <text id="secs" x="32" y="38" text-anchor="middle"></text>
+  </svg>
  </div>
+ <div id="seats" class="seats"></div>
  <div class="panel" id="mine"></div>
  <div class="panel" id="results" hidden></div>
  <p class="info" id="waitList"></p>
@@ -305,7 +315,7 @@ async function joinTable(code,quiet,L,st){
  L.pc.push(()=>{if(HS)kick();render()});
  await pushPresence();render();return true;
 }
-async function leaveTable(){if(!T)return;const t=T;T=null;S=null;HS=null;clearInterval(hostTimer);LS.set('table',null);
+async function leaveTable(){if(!T)return;const t=T;T=null;S=null;HS=null;potTarget=-1;chipsShown=0;clearInterval(hostTimer);LS.set('table',null);
  render();try{await t.L.leave()}catch(e){}}
 async function closeTable(){if(!T||!HS)return leaveTable();LS.set('sec.'+T.code,null);try{await T.L.setState(null)}catch(e){}leaveTable()}
 async function hostTable(){
@@ -479,16 +489,16 @@ function render(){
  const hostOn=here.has(st.host),mySeat=seats.findIndex(s=>s.pid===me),active=(st.active||[]).includes(me);
  $('#codeBtn').textContent=st.code;
  $('#info').textContent=!T.L.on?'Reconnecting…':!hostOn?`${nick(st.host)} (host) is away · paused`:st.status==='lobby'?`Waiting for players · ${N} of 8`:st.status==='over'?`Match over · ${st.sess?st.sess.n:1} played this session`:st.status==='final'?'Session over':`Game ${st.game} · Round ${st.round} of 5 · ${st.n} cards${isLow(st.mode,st.round)?' · weakest wins':''}`;
- $('#potNum').textContent=fmt(st.pot);
+ setPot(st.pot);
  $('#phase').textContent=st.status==='play'&&st.phase==='decide'?'Pot · decide':'Pot';
- const base=Math.max(0,mySeat);
+ $('#seats').style.gridTemplateColumns=`repeat(${Math.min(4,Math.max(1,N))},minmax(0,1fr))`;
  $('#seats').innerHTML=seats.map((s,i)=>{
-  const rel=(i-base+N)%N,th=(90+rel*360/N)*Math.PI/180,x=50+43*Math.cos(th),y=50+40*Math.sin(th),chips=st.chips&&st.chips[s.pid]!=null?st.chips[s.pid]:2000;
+  const chips=st.chips&&st.chips[s.pid]!=null?st.chips[s.pid]:2000;
   let tag='';
   if(res&&res.votes&&res.votes[s.pid]){const v=res.votes[s.pid];tag=`<span class="tag ${v==='in'?'in':''}">${v==='in'?'In':'Out'}</span>`;if(res.pays&&res.pays[s.pid])tag+=` <span class="tag pay">−${fmt(res.pays[s.pid])}</span>`;if(res.solo===s.pid)tag+=' <span class="tag pay">+◆</span>'}
   else if(st.status==='play'&&st.phase==='decide'&&(st.active||[]).includes(s.pid))tag=(st.decided||[]).includes(s.pid)?'<span class="tag ok">Ready</span>':'<span class="tag">Thinking</span>';
   else if(st.status!=='lobby'&&!(chips>0))tag='<span class="tag">Broke</span>';
-  return`<div class="seat ${s.pid===me?'me':''} ${here.has(s.pid)?'':'gone'}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%">${st.status!=='lobby'&&i===st.dealer?'<span class="dealer" title="Dealer">D</span>':''}<div class="av" style="--c:${COLORS[i%8]}">${esc(s.nick.slice(0,1).toUpperCase())}</div><div class="nm">${esc(s.nick)}</div><div class="ch">${fmt(chips)}</div>${st.status==='lobby'?'':pips(st.dia&&st.dia[s.pid])}${tag}</div>`}).join('');
+  return`<div class="seat ${s.pid===me?'me':''} ${here.has(s.pid)?'':'gone'}">${st.status!=='lobby'&&i===st.dealer?'<span class="dealer" title="Dealer">D</span>':''}<div class="av" style="--c:${COLORS[i%8]}">${esc(s.nick.slice(0,1).toUpperCase())}</div><div class="nm">${esc(s.nick)}</div><div class="ch">${fmt(chips)}</div>${st.status==='lobby'?'':pips(st.dia&&st.dia[s.pid])}${tag}</div>`}).join('');
  // your panel
  let m='';
  if(st.status==='lobby'){
@@ -548,6 +558,15 @@ function render(){
  $('#waitList').textContent=(st.waiting||[]).length?'Joining next game: '+st.waiting.map(w=>w.nick).join(', '):'';
  tick();
 }
+/* the pot: number counts up, chip pile grows, +amount pops */
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;let potShown=0,potTarget=-1,potRaf=0,chipsShown=0;
+function setPot(v){v=Math.max(0,v|0);if(v===potTarget)return;const first=potTarget<0,d=v-potTarget,from=first?v:potShown;potTarget=v;
+ if(!first&&d>0){const el=$('#potDelta');el.textContent='+'+fmt(d);el.classList.remove('go');void el.offsetWidth;el.classList.add('go')}
+ cancelAnimationFrame(potRaf);const t0=performance.now(),dur=calm||first?0:800;
+ const step=t=>{const k=dur?Math.min(1,(t-t0)/dur):1;potShown=Math.round(from+(v-from)*(1-(1-k)**3));$('#potNum').textContent=fmt(potShown);if(k<1)potRaf=requestAnimationFrame(step)};step(t0);
+ const n=v<=0?0:Math.min(18,1+Math.floor(Math.log2(v/2+1)*2)),old=Math.min(chipsShown,n);let h='';
+ for(let i=0;i<n;i++){const col=i%3,row=(i/3)|0;h+=`<i class="chip c${(i*7)%3} ${i>=old&&!first?'drop':''}" style="left:${col*24+(row%2?6:0)}px;bottom:${row*8}px;animation-delay:${Math.max(0,i-old)*70}ms"></i>`}
+ $('#stack').innerHTML=h;chipsShown=n}
 function tick(){
  const on=S&&S.status==='play'&&S.phase==='decide'&&S.deadline>0;$('#ring').style.visibility=on?'visible':'hidden';if(!on)return;
  const left=Math.min(DUR,Math.max(0,S.deadline-Date.now()));
