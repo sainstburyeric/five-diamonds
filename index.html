@@ -155,7 +155,7 @@ details[open]{padding-bottom:14px}
  <summary>How it works</summary>
  <ul>
   <li>Everyone starts with 2,000 chips. Each round, everyone puts 2 chips in the pot.</li>
-  <li>Look at your cards and tap <b>In</b> or <b>Out</b> within 30 seconds. No tap counts as Out.</li>
+  <li>Look at your cards and tap <b>In</b> or <b>Out</b> within 1 minute (no tap counts as Out), or with no time limit if the host picks that. The host taps to start each next round.</li>
   <li>Only one player In: they get a diamond. Nobody In: the pot just carries on.</li>
   <li>Two or more In: face-offs, starting left of the dealer, dealer last. The winner moves on to the next player. Earlier face-offs are side shows (only those two see the cards); the last one is shown to everyone.</li>
   <li>Every face-off loser pays the pot size into the pot. A tie costs nothing and the earlier player moves on.</li>
@@ -201,7 +201,7 @@ const LS={get(k){try{return JSON.parse(localStorage.getItem('fd.'+k))}catch(e){r
  set(k,v){try{v==null?localStorage.removeItem('fd.'+k):localStorage.setItem('fd.'+k,JSON.stringify(v))}catch(e){}}};
 const fmt=n=>Number(n||0).toLocaleString('en-IN');
 const rnd=n=>Array.from(crypto.getRandomValues(new Uint8Array(n)),b=>(b%36).toString(36)).join('');
-const DUR=30000,MAXP=8,COLORS=['#f2c057','#8fd8ff','#ffa3b9','#bdf28a','#cfb1ff','#ffbb87','#86f0d6','#f5ef8e'];
+const DUR=60000,MAXP=8,COLORS=['#f2c057','#8fd8ff','#ffa3b9','#bdf28a','#cfb1ff','#ffbb87','#86f0d6','#f5ef8e'];
 
 /* ---------- cards and hand ranking ---------- */
 const RN=['','','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
@@ -342,7 +342,6 @@ async function becomeHost(st){
  const s0=HS.st;
  if(s0.hostPub.x!==ME.keys.pub.x){s0.hostPub={x:ME.keys.pub.x,y:ME.keys.pub.y}}
  if(sec&&sec.rid===s0.rid){HS.hands=sec.hands||{};HS.acts=sec.acts||{};HS.deck=sec.deck||null}
- if(s0.status==='play'&&s0.phase==='reveal')HS.autoNext=Date.now()+6000;
  clearInterval(hostTimer);hostTimer=setInterval(kick,500);
  await onState(s0,true);
  if(s0.status==='play'&&s0.phase==='decide'&&!(sec&&sec.rid===s0.rid))enqueue(()=>deal(true));
@@ -378,8 +377,7 @@ async function hostPeers(peers){
 }
 async function hostTick(){
  const st=HS.st;if(st.status!=='play')return;
- if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p])||Date.now()>=st.deadline))await resolveRound();
- else if(st.phase==='reveal'&&HS.autoNext&&Date.now()>=HS.autoNext){HS.autoNext=0;await nextRound()}
+ if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p])||(st.deadline&&Date.now()>=st.deadline)))await resolveRound();
 }
 const nextAlive=(st,i)=>{const N=st.seats.length;for(let k=1;k<=N;k++){const j=(i+k)%N;if(st.chips[st.seats[j].pid]>0)return j}return i};
 async function startMatch(){
@@ -407,7 +405,7 @@ async function deal(again){
  else{const h={};for(const p of alive)h[p]=HS.hands[p].concat(HS.deck.shift());HS.hands=h}
  Object.assign(st,{rid:st.game+'.'+st.round+'.'+rnd(5),active:alive,decided:[],result:null,secret:{},hands:{},phase:'decide'});
  for(const p of alive)if(HS.pubObj[p])st.hands[p]=await sealFor(p,{rid:st.rid,cards:HS.hands[p]});
- st.sent=Date.now();st.deadline=st.sent+DUR;saveSecret();await commit();
+ st.sent=Date.now();st.deadline=st.timed===false?0:st.sent+DUR;saveSecret();await commit();
 }
 async function resolveRound(){
  const st=HS.st,n=st.n,N=st.seats.length,votes={},order=[];
@@ -430,7 +428,7 @@ async function resolveRound(){
  res.potAfter=st.pot;st.result=res;st.secret={};st.phase='reveal';
  for(const p in secret)if(HS.pubObj[p])st.secret[p]=await sealFor(p,{rid:st.rid,list:secret[p]});
  const win=st.seats.map(s=>s.pid).find(p=>{const d=st.dia[p]||0;return d>=5&&st.seats.every(o=>o.pid===p||d-(st.dia[o.pid]||0)>=2)});
- if(win)endMatch(win,'5 diamonds, 2 clear');else HS.autoNext=Date.now()+(ins.length>1?15000:8000);
+ if(win)endMatch(win,'5 diamonds, 2 clear');
  await commit();
 }
 function endMatch(pid,why){const st=HS.st;Object.assign(st,{status:'over',phase:'reveal',winner:pid||null,won:st.pot,endWhy:why});if(pid)st.chips[pid]+=st.pot;st.pot=0;HS.autoNext=0;st.sess.n++;if(pid)st.sess.wins[pid]=(st.sess.wins[pid]||0)+1}
@@ -496,6 +494,7 @@ function render(){
  if(st.status==='lobby'){
   m=`<h2>${HS?'Your table is open':'You’re seated'}</h2><p>Table code <b>${esc(st.code)}</b>. ${HS?(N<2?'Send the invite to your friends.':'Start when everyone’s in.'):`Waiting for ${esc(nick(st.host))} to start.`}</p>`;
   const alt=st.mode==='alt';
+  const tOn=st.timed!==false;m+=`<h3>Timer</h3>`+(HS?`<div class="acts"><button class="${tOn?'b-in':'b-out'}" data-do="timer-on" aria-pressed="${tOn}">1 minute</button><button class="${tOn?'b-out':'b-in'}" data-do="timer-off" aria-pressed="${!tOn}">No limit</button></div>`:'')+`<p class="info">${tOn?'1 minute to choose In or Out each round. No tap counts as Out.':'No time limit: the round waits until everyone has chosen.'}</p>`;
   m+=`<h3>Mode</h3>`+(HS?`<div class="acts" role="radiogroup"><button class="${alt?'b-out':'b-in'}" data-do="mode-normal" aria-pressed="${!alt}">Normal</button><button class="${alt?'b-in':'b-out'}" data-do="mode-alt" aria-pressed="${alt}">Alternate</button></div>`:'')
    +`<p class="info">${alt?'<b>Alternate:</b> highest hand wins rounds 1, 3 and 5; weakest hand wins rounds 2 and 4.':'<b>Normal:</b> highest hand always wins.'}</p>`;
   if(HS)m+=`<div class="acts"><button class="b-in" data-do="start" ${N<2?'disabled':''}>Start match</button><button class="b-out" data-do="invite">Send invite</button></div>`;
@@ -510,13 +509,16 @@ function render(){
   }else m+=handView(ME.hand,st.n,'',isLow(st.mode,st.round));
   if(decide&&!sent)m+=`<div class="acts"><button class="b-in" data-do="in">In</button><button class="b-out" data-do="out">Out</button></div>`;
   else if(decide)m+=`<p class="best">You’re ${ME.vote==='in'?'in':'out'}. Waiting for the others…</p>`;
+  if(decide&&HS&&!st.deadline)m+=`<div class="acts" style="grid-template-columns:1fr"><button class="b-ghost" data-do="force">Reveal now (anyone who hasn’t chosen is Out)</button></div>`;
  }else if(st.status==='play'){
   m=(st.waiting||[]).some(w=>w.pid===me)?`<h2>You’re in the next game</h2><p>You’ll get 2,000 chips and be dealt in when game ${st.game+1} starts.</p>`
    :mySeat<0?`<h2>Watching</h2><p>The table is full.</p>`:!(st.chips&&st.chips[me]>0)?`<h2>Out of chips</h2><p>You can watch until the match ends.</p>`:`<h2>Dealing…</h2>`;
  }
- if(HS&&st.status==='play'&&st.phase==='reveal')m+=`<div class="acts" style="grid-template-columns:1fr"><button class="b-ghost" data-do="next">${st.round>=5?'Start next game':'Next round'}</button></div>`;
+ if(!HS&&st.status==='play'&&st.phase==='reveal')m+=`<p class="info">Waiting for ${esc(nick(st.host))} to start the ${st.round>=5?'next game':'next round'}.</p>`;
+ if(HS&&st.status==='play'&&st.phase==='reveal')m+=`<div class="acts" style="grid-template-columns:1fr"><button class="b-in" data-do="next">${st.round>=5?'Start next game':'Next round'}</button></div>`;
  if(st.status==='over'){
   m=`<div class="banner"><h2>${st.winner?`${esc(nick(st.winner))} takes the pot of ${fmt(st.won)}`:'Match over'}</h2><p>${esc(st.endWhy||'')}</p></div>`;
+  if(HS){const tOn=st.timed!==false;m+=`<h3>Timer</h3>`+(HS?`<div class="acts"><button class="${tOn?'b-in':'b-out'}" data-do="timer-on" aria-pressed="${tOn}">1 minute</button><button class="${tOn?'b-out':'b-in'}" data-do="timer-off" aria-pressed="${!tOn}">No limit</button></div>`:'')+`<p class="info">${tOn?'1 minute to choose In or Out each round. No tap counts as Out.':'No time limit: the round waits until everyone has chosen.'}</p>`;}
   {const alt=st.mode==='alt';if(HS)m+=`<h3>Mode for next match</h3><div class="acts"><button class="${alt?'b-out':'b-in'}" data-do="mode-normal" aria-pressed="${!alt}">Normal</button><button class="${alt?'b-in':'b-out'}" data-do="mode-alt" aria-pressed="${alt}">Alternate</button></div>`}
   if(HS)m+=`<p class="info">Chips carry over to the next match.</p><div class="acts"><button class="b-in" data-do="start">Next match</button><button class="b-out" data-do="endsess">End session</button></div>`;
   else m+=`<p>Waiting for ${esc(nick(st.host))} to start the next match or end the session.</p>`;
@@ -547,7 +549,7 @@ function render(){
  tick();
 }
 function tick(){
- const on=S&&S.status==='play'&&S.phase==='decide';$('#ring').style.visibility=on?'visible':'hidden';if(!on)return;
+ const on=S&&S.status==='play'&&S.phase==='decide'&&S.deadline>0;$('#ring').style.visibility=on?'visible':'hidden';if(!on)return;
  const left=Math.min(DUR,Math.max(0,S.deadline-Date.now()));
  $('#arc').setAttribute('stroke-dashoffset',(169.6*(1-left/DUR)).toFixed(1));$('#secs').textContent=Math.ceil(left/1000);
 }
@@ -573,6 +575,8 @@ $('#game').addEventListener('click',e=>{
  else if(d==='next')enqueue(()=>{HS.autoNext=0;return nextRound()});
  else if(d==='leave')closeTable();
  else if(d==='invite')invite();
+ else if((d==='timer-on'||d==='timer-off')&&HS)enqueue(async()=>{if(HS.st.status==='play')return;HS.st.timed=d==='timer-on';await commit()});
+ else if(d==='force'&&HS)enqueue(async()=>{if(HS.st.status==='play'&&HS.st.phase==='decide')await resolveRound()});
  else if(d==='endsess'&&HS){if(b.dataset.armed)enqueue(endSession);else{b.dataset.armed='1';b.textContent='Tap again to end';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='End session'}},3500)}}
  else if(d==='newsess'&&HS)enqueue(newSession);
  else if(d==='sharetally'&&S&&S.tally){const t=tallyText(S);if(navigator.share)navigator.share({title:'Five Diamonds tally',text:t}).catch(()=>{});else{try{navigator.clipboard.writeText(t).then(()=>toast('Tally copied'),()=>toast('Could not copy'))}catch(e){}}}
