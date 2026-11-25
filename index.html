@@ -161,6 +161,7 @@ details[open]{padding-bottom:14px}
   <li>Every face-off loser pays the pot size into the pot. A tie costs nothing and the earlier player moves on.</li>
   <li>The pot goes to the first player with 5+ diamonds and 2 more than everyone else.</li>
   <li>A game is 5 rounds. You keep your cards all game: 2 to start, then 1 new card each round, up to 6. Then the dealer moves left and a new game starts with fresh cards.</li>
+  <li><b>Modes</b> (host picks before the match): Normal, highest hand always wins. Alternate, weakest hand wins rounds 2 and 4 (2 cards: imagine the worst third; 4 cards: your worst 3 count); highest wins the rest.</li>
   <li>2 cards: imagine the best third card. 4 or 5 cards: your best 3 count. 6 cards: split into 1 (high card), 2 (imagine the third) and 3; win 2 of the 3 to win.</li>
  </ul>
  <p><b>Hands, best first</b></p>
@@ -215,11 +216,14 @@ function ev3(a){
 }
 function best2(a){let b=null;for(let x=0;x<52;x++){if(x===a[0]||x===a[1])continue;const e=ev3([a[0],a[1],x]);if(!b||e.s>b.s){b=e;b.ghost=x}}return b}
 function bestN(a){let b=null;for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)for(let k=j+1;k<a.length;k++){const e=ev3([a[i],a[j],a[k]]);if(!b||e.s>b.s)b=e}return b}
-const evalHand=a=>a.length===2?best2(a):bestN(a);
+function worst2(a){let b=null;for(let x=0;x<52;x++){if(x===a[0]||x===a[1])continue;const e=ev3([a[0],a[1],x]);if(!b||e.s<b.s){b=e;b.ghost=x}}return b}
+function worstN(a){let b=null;for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)for(let k=j+1;k<a.length;k++){const e=ev3([a[i],a[j],a[k]]);if(!b||e.s<b.s)b=e}return b}
+const evalHand=(a,low)=>low?(a.length===2?worst2(a):worstN(a)):(a.length===2?best2(a):bestN(a));
+const isLow=(mode,round)=>mode==='alt'&&(round===2||round===4);
 function label(e){const t=e.top;return[`${RN[t]} high`,`Pair of ${RW[t]}`,`Colour, ${RN[t]} high`,`Sequence to ${RN[t]}`,`Pure sequence to ${RN[t]}`,`Trio of ${RW[t]}`][e.cat]}
 function evalArr(arr){const a=R(arr[0][0]),b=best2(arr[1]),c=ev3(arr[2]);return[{s:a,lab:`${RN[a]} high`},Object.assign(b,{lab:label(b)}),Object.assign(c,{lab:label(c)})]}
 function miniScore(x,y){const A=evalArr(x),B=evalArr(y);let a=0,b=0;for(let i=0;i<3;i++){if(A[i].s>B[i].s)a++;else if(B[i].s>A[i].s)b++}return[a,b]}
-function cmpHands(n,x,y){if(n<6)return Math.sign(evalHand(x).s-evalHand(y).s);const[a,b]=miniScore(x,y);return Math.sign(a-b)}
+function cmpHands(n,x,y,low){if(n<6)return(low?-1:1)*Math.sign(evalHand(x,low).s-evalHand(y,low).s);const[a,b]=miniScore(x,y);return Math.sign(a-b)}
 let P3=null,P2=null;
 function tables(){if(P3)return;P3=[];P2=[];for(let i=0;i<52;i++)for(let j=i+1;j<52;j++){P2.push(best2([i,j]).s);for(let k=j+1;k<52;k++)P3.push(ev3([i,j,k]).s)}P3.sort((a,b)=>a-b);P2.sort((a,b)=>a-b)}
 function pct(arr,s){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>1;if(arr[m]<s)lo=m+1;else hi=m}return lo/arr.length}
@@ -378,7 +382,7 @@ const nextAlive=(st,i)=>{const N=st.seats.length;for(let k=1;k<=N;k++){const j=(
 async function startMatch(){
  const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];if(st.seats.length<2)return toast('Need at least 2 players.');
  st.chips={};st.dia={};for(const s of st.seats){st.chips[s.pid]=2000;st.dia[s.pid]=0}
- Object.assign(st,{pot:0,game:1,round:0,status:'play',winner:null,won:0,endWhy:'',result:null,dealer:Math.floor(Math.random()*st.seats.length)});
+ Object.assign(st,{mode:st.mode==='alt'?'alt':'normal',pot:0,game:1,round:0,status:'play',winner:null,won:0,endWhy:'',result:null,dealer:Math.floor(Math.random()*st.seats.length)});
  await deal(false);
 }
 async function nextRound(){
@@ -404,12 +408,12 @@ async function resolveRound(){
  for(const p of st.active)votes[p]=HS.acts[p]&&HS.acts[p].vote==='in'?'in':'out';
  for(let i=1;i<=N;i++){const p=st.seats[(st.dealer+i)%N].pid;if(st.active.includes(p))order.push(p)}
  const ins=order.filter(p=>votes[p]==='in'),play=p=>n<6?HS.hands[p]:(HS.acts[p]&&HS.acts[p].arr)||autoArr(HS.hands[p]);
- const res={votes,ins,n,potBefore:st.pot,faceoffs:[],final:null,pays:{},solo:null},secret={};
+ const low=isLow(st.mode,st.round),res={votes,ins,n,low,potBefore:st.pot,faceoffs:[],final:null,pays:{},solo:null},secret={};
  if(ins.length===1){res.solo=ins[0];st.dia[ins[0]]=(st.dia[ins[0]]||0)+1}
  else if(ins.length>1){
   const P=st.pot;let champ=ins[0],paid=0;
   for(let i=1;i<ins.length;i++){
-   const c=ins[i],r=cmpHands(n,play(champ),play(c)),w=r>0?champ:r<0?c:null,loser=w===null?null:w===champ?c:champ;
+   const c=ins[i],r=cmpHands(n,play(champ),play(c),low),w=r>0?champ:r<0?c:null,loser=w===null?null:w===champ?c:champ;
    const d={a:champ,b:c,w,ha:play(champ),hb:play(c)};
    if(i===ins.length-1)res.final=d;else{res.faceoffs.push({a:champ,b:c,w});for(const p of[champ,c])(secret[p]=secret[p]||[]).push(d)}
    if(loser){const amt=Math.min(P,st.chips[loser]);st.chips[loser]-=amt;res.pays[loser]=(res.pays[loser]||0)+amt;paid+=amt}
@@ -448,14 +452,14 @@ async function act(vote){
 function cardHTML(c,cls,tag,attrs){c=okCard(c)?c:0;const red=Su(c)===1||Su(c)===2;tag=tag||'span';
  return`<${tag} class="card ${red?'red':''} ${cls||''}" ${attrs||''} aria-label="${RN[R(c)]} of ${['spades','hearts','diamonds','clubs'][Su(c)]}"><b>${RN[R(c)]}</b><i>${SU[Su(c)]}</i></${tag}>`}
 function pips(d){d=d|0;let h='';for(let i=0;i<5;i++)h+=`<i class="pip ${i<d?'on':''}"></i>`;return`<div class="pips" aria-label="${d} diamonds">${h}${d>5?'+'+(d-5):''}</div>`}
-function handView(h,n,sm){
+function handView(h,n,sm,low){
  if(n===6){if(!okArr(h))return'';const ev=evalArr(h);
   return['Single','Two + imagined','Best three'].map((t,i)=>`<div class="slot"><span>${t}<br><small>${esc(ev[i].lab)}</small></span><span class="cards">${h[i].map(c=>cardHTML(c,sm)).join('')}${i===1?cardHTML(ev[1].ghost,(sm||'')+' ghost'):''}</span></div>`).join('')}
- if(!Array.isArray(h)||!h.every(okCard)||h.length<2)return'';const e=evalHand(h),used=new Set(e.cards);
- return`<div class="cards hand">${h.map(c=>cardHTML(c,(sm||'')+(used.has(c)?'':' dim'))).join('')}${n===2?cardHTML(e.ghost,(sm||'')+' ghost'):''}</div><div class="best">${esc(label(e))}</div>`}
+ if(!Array.isArray(h)||!h.every(okCard)||h.length<2)return'';const e=evalHand(h,low),used=new Set(e.cards);
+ return`<div class="cards hand">${h.map(c=>cardHTML(c,(sm||'')+(used.has(c)?'':' dim'))).join('')}${n===2?cardHTML(e.ghost,(sm||'')+' ghost'):''}</div><div class="best">${low?'Weakest: ':''}${esc(label(e))}</div>`}
 function showdown(d,n,nick,title){
  const score=n===6&&okArr(d.ha)&&okArr(d.hb)?miniScore(d.ha,d.hb):null;
- const side=(p,h,k)=>`<div><div class="who ${d.w===p?'won':''}">${esc(nick(p))}${d.w===p?' wins':''}${score?` · ${score[k]} of 3`:''}</div>${handView(h,n,'sm')}</div>`;
+ const side=(p,h,k)=>`<div><div class="who ${d.w===p?'won':''}">${esc(nick(p))}${d.w===p?' wins':''}${score?` · ${score[k]} of 3`:''}</div>${handView(h,n,'sm',d.low)}</div>`;
  return`${title?`<h3>${esc(title)}</h3>`:''}<div class="vs">${side(d.a,d.ha,0)}${side(d.b,d.hb,1)}</div>${d.w?'':'<p>Tie: nobody pays.</p>'}`}
 function render(){
  const inGame=!!(T&&S);$('#landing').hidden=inGame;$('#game').hidden=!inGame;if(!inGame)return;
@@ -464,7 +468,7 @@ function render(){
  const here=new Set(T.nr.peers().map(p=>p.presence&&p.presence.pid).filter(Boolean));if(HS)here.add(me);
  const hostOn=here.has(st.host),mySeat=seats.findIndex(s=>s.pid===me),active=(st.active||[]).includes(me);
  $('#codeBtn').textContent=st.code;
- $('#info').textContent=!T.L.on?'Reconnecting…':!hostOn?`${nick(st.host)} (host) is away · paused`:st.status==='lobby'?`Waiting for players · ${N} of 8`:st.status==='over'?'Match over':`Game ${st.game} · Round ${st.round} of 5 · ${st.n} cards`;
+ $('#info').textContent=!T.L.on?'Reconnecting…':!hostOn?`${nick(st.host)} (host) is away · paused`:st.status==='lobby'?`Waiting for players · ${N} of 8`:st.status==='over'?'Match over':`Game ${st.game} · Round ${st.round} of 5 · ${st.n} cards${isLow(st.mode,st.round)?' · weakest wins':''}`;
  $('#potNum').textContent=fmt(st.pot);
  $('#phase').textContent=st.status==='play'&&st.phase==='decide'?'Pot · decide':'Pot';
  const base=Math.max(0,mySeat);
@@ -479,16 +483,19 @@ function render(){
  let m='';
  if(st.status==='lobby'){
   m=`<h2>${HS?'Your table is open':'You’re seated'}</h2><p>Table code <b>${esc(st.code)}</b>. ${HS?(N<2?'Send the invite to your friends.':'Start when everyone’s in.'):`Waiting for ${esc(nick(st.host))} to start.`}</p>`;
+  const alt=st.mode==='alt';
+  m+=`<h3>Mode</h3>`+(HS?`<div class="acts" role="radiogroup"><button class="${alt?'b-out':'b-in'}" data-do="mode-normal" aria-pressed="${!alt}">Normal</button><button class="${alt?'b-in':'b-out'}" data-do="mode-alt" aria-pressed="${alt}">Alternate</button></div>`:'')
+   +`<p class="info">${alt?'<b>Alternate:</b> highest hand wins rounds 1, 3 and 5; weakest hand wins rounds 2 and 4.':'<b>Normal:</b> highest hand always wins.'}</p>`;
   if(HS)m+=`<div class="acts"><button class="b-in" data-do="start" ${N<2?'disabled':''}>Start match</button><button class="b-out" data-do="invite">Send invite</button></div>`;
  }else if(st.status==='play'&&active&&ME.hand){
   const decide=st.phase==='decide',sent=ME.sentRid===st.rid;
-  m=`<h2>Your ${st.n} cards</h2>${st.round>1?'<p class="info">Same cards as last round, plus 1 new card.</p>':''}`;
+  m=`${isLow(st.mode,st.round)?'<div class="banner" style="margin:0 0 12px"><h2>Weakest hand wins this round</h2></div>':''}<h2>Your ${st.n} cards</h2>${st.round>1?'<p class="info">Same cards as last round, plus 1 new card.</p>':''}`;
   if(st.n===6&&ME.arr){
    if(decide&&!sent){const ev=evalArr(ME.arr);
     m+=['Single · high card','Two · imagine the third','Three · as dealt'].map((t,i)=>`<div class="slot"><span><b>${t}</b><br><small>${esc(ev[i].lab)}</small></span><span class="cards">${ME.arr[i].map((c,j)=>cardHTML(c,ME.pick&&ME.pick[0]===i&&ME.pick[1]===j?'pick':'','button',`data-s="${i}" data-j="${j}"`)).join('')}${i===1?cardHTML(ev[1].ghost,'ghost'):''}</span></div>`).join('')
      +`<div class="row" style="justify-content:space-between"><small>Tap two cards to swap them.</small><button class="b-ghost" data-do="auto">Auto-arrange</button></div>`;
    }else m+=handView(ME.arr,6);
-  }else m+=handView(ME.hand,st.n);
+  }else m+=handView(ME.hand,st.n,'',isLow(st.mode,st.round));
   if(decide&&!sent)m+=`<div class="acts"><button class="b-in" data-do="in">In</button><button class="b-out" data-do="out">Out</button></div>`;
   else if(decide)m+=`<p class="best">You’re ${ME.vote==='in'?'in':'out'}. Waiting for the others…</p>`;
  }else if(st.status==='play'){
@@ -498,6 +505,7 @@ function render(){
  if(HS&&st.status==='play'&&st.phase==='reveal')m+=`<div class="acts" style="grid-template-columns:1fr"><button class="b-ghost" data-do="next">${st.round>=5?'Start next game':'Next round'}</button></div>`;
  if(st.status==='over'){
   m=`<div class="banner"><h2>${st.winner?`${esc(nick(st.winner))} takes the pot of ${fmt(st.won)}`:'Match over'}</h2><p>${esc(st.endWhy||'')}</p></div>`;
+  {const alt=st.mode==='alt';if(HS)m+=`<h3>Mode for next match</h3><div class="acts"><button class="${alt?'b-out':'b-in'}" data-do="mode-normal" aria-pressed="${!alt}">Normal</button><button class="${alt?'b-in':'b-out'}" data-do="mode-alt" aria-pressed="${alt}">Alternate</button></div>`}
   if(HS)m+=`<div class="acts"><button class="b-in" data-do="start">New match</button><button class="b-out" data-do="leave">Close table</button></div>`;
   else m+=`<p>Waiting for ${esc(nick(st.host))} to start a new match.</p>`;
  }
@@ -509,9 +517,9 @@ function render(){
   if(!ins.length)r=`<h2>Everyone stayed out</h2><p>The pot carries on to the next round.</p>`;
   else if(res.solo)r=`<h2>${esc(nick(res.solo))} was the only one in</h2><p>+1 diamond. No cards shown.</p>`;
   else if(res.final){
-   r=`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+showdown(res.final,res.n,nick);
+   r=`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+showdown(Object.assign({low:res.low},res.final),res.n,nick)+(res.low?'<p class="info">Weakest hand won this round.</p>':'');
    if(res.faceoffs.length)r+=`<h3>Side shows</h3><ul>${res.faceoffs.map(f=>`<li>${f.w?`${esc(nick(f.w))} beat ${esc(nick(f.w===f.a?f.b:f.a))}`:`${esc(nick(f.a))} and ${esc(nick(f.b))} tied, ${esc(nick(f.a))} moved on`}</li>`).join('')}</ul>`;
-   if(Array.isArray(ME.side))r+=ME.side.map(d=>`<div class="private">${showdown(d,res.n,nick,'Your side show · only you two see this')}</div>`).join('');
+   if(Array.isArray(ME.side))r+=ME.side.map(d=>`<div class="private">${showdown(Object.assign({low:res.low},d),res.n,nick,'Your side show · only you two see this')}</div>`).join('');
   }
   const pays=Object.entries(res.pays||{});
   if(pays.length)r+=`<p>${pays.map(([p,a])=>`${esc(nick(p))} pays ${fmt(a)}`).join(' · ')} into the pot. Pot is now <b>${fmt(res.potAfter)}</b>.</p>`;
@@ -548,6 +556,7 @@ $('#game').addEventListener('click',e=>{
  else if(d==='next')enqueue(()=>{HS.autoNext=0;return nextRound()});
  else if(d==='leave')closeTable();
  else if(d==='invite')invite();
+ else if((d==='mode-normal'||d==='mode-alt')&&HS)enqueue(async()=>{const m=d==='mode-alt'?'alt':'normal';if(HS.st.status==='play')return;HS.st.mode=m;await commit()});
 });
 
 (async()=>{
