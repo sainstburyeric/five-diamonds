@@ -166,7 +166,7 @@ details[open]{padding-bottom:14px}
  </ul>
  <p><b>Hands, best first</b></p>
  <ol class="rank"><li>Trio (AAA top)</li><li>Pure sequence (A-K-Q same suit top)</li><li>Sequence</li><li>Colour (same suit)</li><li>Pair</li><li>High card</li></ol>
- <p class="info">A-2-3 is the lowest sequence.</p>
+ <p class="info">A-2-3 is the lowest sequence. No ties: if hands match, suits decide (♠ › ♥ › ♦ › ♣), highest card first. An imagined card takes the best suit (the worst in weakest-wins rounds, where the weaker suit wins).</p>
 </details>
 </div>
 <div id="toast" role="status"></div>
@@ -212,7 +212,9 @@ function ev3(a){
  let cat,tb;
  if(r[0]===r[2]){cat=5;tb=[r[0]]}else if(seq){cat=fl?4:3;tb=[seq]}else if(fl){cat=2;tb=r}
  else if(r[0]===r[1]||r[1]===r[2]){cat=1;tb=[r[1],r[0]===r[1]?r[2]:r[0]]}else{cat=0;tb=r}
- return{s:((cat*15+tb[0])*15+(tb[1]||0))*15+(tb[2]||0),cat,top:tb[0],cards:a};
+ // suits break ties: ♠ > ♥ > ♦ > ♣, highest card first (A counts low in A-2-3)
+ const er=c=>seq===3&&R(c)===14?1:R(c),st=c=>3-Su(c),o=a.slice().sort((x,y)=>er(y)-er(x)||st(y)-st(x));
+ return{s:(((cat*15+tb[0])*15+(tb[1]||0))*15+(tb[2]||0))*64+st(o[0])*16+st(o[1])*4+st(o[2]),cat,top:tb[0],cards:a};
 }
 function best2(a){let b=null;for(let x=0;x<52;x++){if(x===a[0]||x===a[1])continue;const e=ev3([a[0],a[1],x]);if(!b||e.s>b.s){b=e;b.ghost=x}}return b}
 function bestN(a){let b=null;for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++)for(let k=j+1;k<a.length;k++){const e=ev3([a[i],a[j],a[k]]);if(!b||e.s>b.s)b=e}return b}
@@ -221,7 +223,7 @@ function worstN(a){let b=null;for(let i=0;i<a.length;i++)for(let j=i+1;j<a.lengt
 const evalHand=(a,low)=>low?(a.length===2?worst2(a):worstN(a)):(a.length===2?best2(a):bestN(a));
 const isLow=(mode,round)=>mode==='alt'&&(round===2||round===4);
 function label(e){const t=e.top;return[`${RN[t]} high`,`Pair of ${RW[t]}`,`Colour, ${RN[t]} high`,`Sequence to ${RN[t]}`,`Pure sequence to ${RN[t]}`,`Trio of ${RW[t]}`][e.cat]}
-function evalArr(arr){const a=R(arr[0][0]),b=best2(arr[1]),c=ev3(arr[2]);return[{s:a,lab:`${RN[a]} high`},Object.assign(b,{lab:label(b)}),Object.assign(c,{lab:label(c)})]}
+function evalArr(arr){const a=R(arr[0][0])*4+3-Su(arr[0][0]),b=best2(arr[1]),c=ev3(arr[2]);return[{s:a,lab:`${RN[R(arr[0][0])]} high`},Object.assign(b,{lab:label(b)}),Object.assign(c,{lab:label(c)})]}
 function miniScore(x,y){const A=evalArr(x),B=evalArr(y);let a=0,b=0;for(let i=0;i<3;i++){if(A[i].s>B[i].s)a++;else if(B[i].s>A[i].s)b++}return[a,b]}
 function cmpHands(n,x,y,low){if(n<6)return(low?-1:1)*Math.sign(evalHand(x,low).s-evalHand(y,low).s);const[a,b]=miniScore(x,y);return Math.sign(a-b)}
 let P3=null,P2=null;
@@ -230,7 +232,7 @@ function pct(arr,s){let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>1;if(ar
 function autoArr(h){tables();let best=null,bv=-1;
  for(let i=0;i<6;i++){const rest=h.filter((_,x)=>x!==i);
   for(let j=0;j<5;j++)for(let k=j+1;k<5;k++){const two=[rest[j],rest[k]],three=rest.filter((_,x)=>x!==j&&x!==k);
-   const v=(R(h[i])-2)/12+pct(P2,best2(two).s)+pct(P3,ev3(three).s);if(v>bv){bv=v;best=[[h[i]],two,three]}}}
+   const v=(R(h[i])*4+3-Su(h[i])-8)/51+pct(P2,best2(two).s)+pct(P3,ev3(three).s);if(v>bv){bv=v;best=[[h[i]],two,three]}}}
  return best}
 function deck(){const d=[...Array(52).keys()],u=crypto.getRandomValues(new Uint32Array(52));for(let i=51;i>0;i--){const j=u[i]%(i+1);[d[i],d[j]]=[d[j],d[i]]}return d}
 const okCard=c=>Number.isInteger(c)&&c>=0&&c<52;
