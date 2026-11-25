@@ -159,7 +159,8 @@ details[open]{padding-bottom:14px}
   <li>Only one player In: they get a diamond. Nobody In: the pot just carries on.</li>
   <li>Two or more In: face-offs, starting left of the dealer, dealer last. The winner moves on to the next player. Earlier face-offs are side shows (only those two see the cards); the last one is shown to everyone.</li>
   <li>Every face-off loser pays the pot size into the pot. A tie costs nothing and the earlier player moves on.</li>
-  <li>The pot goes to the first player with 5+ diamonds and 2 more than everyone else.</li>
+  <li>The pot goes to the first player with 5+ diamonds and 2 more than everyone else. That ends the match.</li>
+  <li>A session can have many matches. Chips carry over from match to match. When the host ends the session, everyone sees the final tally.</li>
   <li>A game is 5 rounds. You keep your cards all game: 2 to start, then 1 new card each round, up to 6. Then the dealer moves left and a new game starts with fresh cards.</li>
   <li><b>Modes</b> (host picks before the match): Normal, highest hand always wins. Alternate, weakest hand wins rounds 2 and 4 (2 cards: imagine the worst third; 4 cards: your worst 3 count); highest wins the rest.</li>
   <li>2 cards: imagine the best third card. 4 or 5 cards: your best 3 count. 6 cards: split into 1 (high card), 2 (imagine the third) and 3; win 2 of the 3 to win.</li>
@@ -365,7 +366,7 @@ async function hostPeers(peers){
   const pid=pr.pid.slice(0,100),nick=cleanNick(pr.nick);here.add(pid);
   const seat=st.seats.find(s=>s.pid===pid)||st.waiting.find(s=>s.pid===pid);
   if(seat){if(seat.nick!==nick){seat.nick=nick;ch=true}}
-  else if(st.seats.length+st.waiting.length<MAXP){(st.status==='play'?st.waiting:st.seats).push({pid,nick});if(st.status!=='play'){st.chips[pid]=2000;st.dia[pid]=0}ch=true}
+  else if(st.seats.length+st.waiting.length<MAXP){(st.status==='play'?st.waiting:st.seats).push({pid,nick});if(st.status!=='play'&&st.chips[pid]==null){st.chips[pid]=2000;st.dia[pid]=0}ch=true}
   const k=pr.pub.x+'.'+pr.pub.y;
   if(HS.pub[pid]!==k){HS.pub[pid]=k;HS.pubObj[pid]={x:pr.pub.x,y:pr.pub.y};
    if(st.status==='play'&&HS.hands[pid]){st.hands[pid]=await sealFor(pid,{rid:st.rid,cards:HS.hands[pid]});ch=true}}
@@ -383,14 +384,17 @@ async function hostTick(){
 const nextAlive=(st,i)=>{const N=st.seats.length;for(let k=1;k<=N;k++){const j=(i+k)%N;if(st.chips[st.seats[j].pid]>0)return j}return i};
 async function startMatch(){
  const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];if(st.seats.length<2)return toast('Need at least 2 players.');
- st.chips={};st.dia={};for(const s of st.seats){st.chips[s.pid]=2000;st.dia[s.pid]=0}
+ // chips carry over between matches in one session; newcomers start with 2,000
+ st.sess=st.sess||{n:0,start:{},wins:{}};st.dia={};
+ for(const s of st.seats){if(!(s.pid in st.sess.start)||st.chips[s.pid]==null){st.sess.start[s.pid]=2000;st.chips[s.pid]=2000}st.dia[s.pid]=0}
+ if(st.seats.filter(s=>st.chips[s.pid]>0).length<2)return toast('Need at least 2 players with chips.');
  Object.assign(st,{mode:st.mode==='alt'?'alt':'normal',pot:0,game:1,round:0,status:'play',winner:null,won:0,endWhy:'',result:null,dealer:Math.floor(Math.random()*st.seats.length)});
  await deal(false);
 }
 async function nextRound(){
  const st=HS.st;if(st.status!=='play')return;
  if(st.round>=5){st.game++;st.round=0;
-  for(const w of st.waiting){st.seats.push(w);st.chips[w.pid]=2000;st.dia[w.pid]=0}st.waiting=[];
+  for(const w of st.waiting){st.seats.push(w);if(st.chips[w.pid]==null||!(w.pid in st.sess.start)){st.chips[w.pid]=2000;st.sess.start[w.pid]=2000}st.dia[w.pid]=0}st.waiting=[];
   st.dealer=nextAlive(st,st.dealer)}
  await deal(false);
 }
@@ -429,7 +433,13 @@ async function resolveRound(){
  if(win)endMatch(win,'5 diamonds, 2 clear');else HS.autoNext=Date.now()+(ins.length>1?15000:8000);
  await commit();
 }
-function endMatch(pid,why){const st=HS.st;Object.assign(st,{status:'over',phase:'reveal',winner:pid||null,won:st.pot,endWhy:why});if(pid)st.chips[pid]+=st.pot;st.pot=0;HS.autoNext=0}
+function endMatch(pid,why){const st=HS.st;Object.assign(st,{status:'over',phase:'reveal',winner:pid||null,won:st.pot,endWhy:why});if(pid)st.chips[pid]+=st.pot;st.pot=0;HS.autoNext=0;st.sess.n++;if(pid)st.sess.wins[pid]=(st.sess.wins[pid]||0)+1}
+async function endSession(){const st=HS.st;if(st.status==='play')return;const sess=st.sess||{n:0,start:{},wins:{}};
+ st.tally=st.seats.map(s=>({pid:s.pid,nick:s.nick,chips:st.chips[s.pid]??2000,net:(st.chips[s.pid]??2000)-(sess.start[s.pid]??2000),wins:sess.wins[s.pid]||0})).sort((a,b)=>b.chips-a.chips);
+ st.tallyN=sess.n;st.status='final';st.phase='final';await commit()}
+async function newSession(){const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];st.sess=null;st.tally=null;st.chips={};st.dia={};
+ for(const s of st.seats){st.chips[s.pid]=2000;st.dia[s.pid]=0}Object.assign(st,{status:'lobby',phase:'lobby',pot:0,result:null,winner:null});await commit()}
+function tallyText(st){return`Five Diamonds · table ${st.code} · ${st.tallyN} match${st.tallyN===1?'':'es'}\n`+st.tally.map((t,i)=>`${i+1}. ${t.nick}: ${t.chips} chips (${t.net>=0?'+':''}${t.net})${t.wins?`, won ${t.wins}`:''}`).join('\n')}
 
 /* ---------- every player ---------- */
 async function onState(st,local){
@@ -470,7 +480,7 @@ function render(){
  const here=new Set(T.nr.peers().map(p=>p.presence&&p.presence.pid).filter(Boolean));if(HS)here.add(me);
  const hostOn=here.has(st.host),mySeat=seats.findIndex(s=>s.pid===me),active=(st.active||[]).includes(me);
  $('#codeBtn').textContent=st.code;
- $('#info').textContent=!T.L.on?'Reconnecting…':!hostOn?`${nick(st.host)} (host) is away · paused`:st.status==='lobby'?`Waiting for players · ${N} of 8`:st.status==='over'?'Match over':`Game ${st.game} · Round ${st.round} of 5 · ${st.n} cards${isLow(st.mode,st.round)?' · weakest wins':''}`;
+ $('#info').textContent=!T.L.on?'Reconnecting…':!hostOn?`${nick(st.host)} (host) is away · paused`:st.status==='lobby'?`Waiting for players · ${N} of 8`:st.status==='over'?`Match over · ${st.sess?st.sess.n:1} played this session`:st.status==='final'?'Session over':`Game ${st.game} · Round ${st.round} of 5 · ${st.n} cards${isLow(st.mode,st.round)?' · weakest wins':''}`;
  $('#potNum').textContent=fmt(st.pot);
  $('#phase').textContent=st.status==='play'&&st.phase==='decide'?'Pot · decide':'Pot';
  const base=Math.max(0,mySeat);
@@ -508,8 +518,13 @@ function render(){
  if(st.status==='over'){
   m=`<div class="banner"><h2>${st.winner?`${esc(nick(st.winner))} takes the pot of ${fmt(st.won)}`:'Match over'}</h2><p>${esc(st.endWhy||'')}</p></div>`;
   {const alt=st.mode==='alt';if(HS)m+=`<h3>Mode for next match</h3><div class="acts"><button class="${alt?'b-out':'b-in'}" data-do="mode-normal" aria-pressed="${!alt}">Normal</button><button class="${alt?'b-in':'b-out'}" data-do="mode-alt" aria-pressed="${alt}">Alternate</button></div>`}
-  if(HS)m+=`<div class="acts"><button class="b-in" data-do="start">New match</button><button class="b-out" data-do="leave">Close table</button></div>`;
-  else m+=`<p>Waiting for ${esc(nick(st.host))} to start a new match.</p>`;
+  if(HS)m+=`<p class="info">Chips carry over to the next match.</p><div class="acts"><button class="b-in" data-do="start">Next match</button><button class="b-out" data-do="endsess">End session</button></div>`;
+  else m+=`<p>Waiting for ${esc(nick(st.host))} to start the next match or end the session.</p>`;
+ }
+ if(st.status==='final'&&Array.isArray(st.tally)){
+  m=`<div class="banner"><h2>Session over · final tally</h2><p>${fmt(st.tallyN)} match${st.tallyN===1?'':'es'} played. Everyone started at 2,000.</p></div>
+  <table style="width:100%;border-collapse:collapse;margin-top:10px;font-variant-numeric:tabular-nums"><thead><tr><th style="text-align:left;padding:8px 4px">Player</th><th style="text-align:right;padding:8px 4px">Chips</th><th style="text-align:right;padding:8px 4px">+/−</th><th style="text-align:right;padding:8px 4px">Won</th></tr></thead><tbody>${st.tally.map((t,i)=>`<tr style="border-top:1px solid var(--line)${t.pid===me?';font-weight:800':''}"><td style="padding:8px 4px">${i+1}. ${esc(t.nick)}</td><td style="text-align:right;padding:8px 4px">${fmt(t.chips)}</td><td style="text-align:right;padding:8px 4px;color:${t.net>=0?'var(--brass)':'#ffb3c2'}">${t.net>=0?'+':'−'}${fmt(Math.abs(t.net))}</td><td style="text-align:right;padding:8px 4px">${fmt(t.wins)}</td></tr>`).join('')}</tbody></table>
+  <div class="acts"><button class="b-in" data-do="sharetally">Share tally</button>${HS?'<button class="b-out" data-do="newsess">New session</button>':''}</div>${HS?'<div class="acts" style="grid-template-columns:1fr"><button class="b-out" data-do="leave">Close table</button></div>':''}`;
  }
  const mine=$('#mine');mine.innerHTML=m;mine.classList.toggle('deal',Date.now()-ME.dealtAt<700);
  // results
@@ -558,6 +573,9 @@ $('#game').addEventListener('click',e=>{
  else if(d==='next')enqueue(()=>{HS.autoNext=0;return nextRound()});
  else if(d==='leave')closeTable();
  else if(d==='invite')invite();
+ else if(d==='endsess'&&HS){if(b.dataset.armed)enqueue(endSession);else{b.dataset.armed='1';b.textContent='Tap again to end';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='End session'}},3500)}}
+ else if(d==='newsess'&&HS)enqueue(newSession);
+ else if(d==='sharetally'&&S&&S.tally){const t=tallyText(S);if(navigator.share)navigator.share({title:'Five Diamonds tally',text:t}).catch(()=>{});else{try{navigator.clipboard.writeText(t).then(()=>toast('Tally copied'),()=>toast('Could not copy'))}catch(e){}}}
  else if((d==='mode-normal'||d==='mode-alt')&&HS)enqueue(async()=>{const m=d==='mode-alt'?'alt':'normal';if(HS.st.status==='play')return;HS.st.mode=m;await commit()});
 });
 
