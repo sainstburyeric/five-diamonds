@@ -555,6 +555,10 @@ function render(){
   const outs=Object.keys(res.votes||{}).filter(p=>res.votes[p]==='out');if(outs.length&&ins.length)r+=`<p class="info">Out: ${outs.map(p=>esc(nick(p))).join(', ')}</p>`;
  }
  $('#results').innerHTML=r;$('#results').hidden=!r;
+ // results first: at the very top for players who were In, right under the player cards for everyone else
+ {const R=$('#results'),wasIn=!!(res&&(res.ins||[]).includes(me)),spot=wasIn?$('.potbox'):$('#mine');
+  if(R.nextElementSibling!==spot)spot.parentNode.insertBefore(R,spot);
+  if(r&&res&&ME.shownRid!==st.rid){ME.shownRid=st.rid;scrollTo({top:0,behavior:calm?'auto':'smooth'})}}
  $('#waitList').textContent=(st.waiting||[]).length?'Joining next game: '+st.waiting.map(w=>w.nick).join(', '):'';
  tick();
 }
