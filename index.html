@@ -121,9 +121,9 @@ details[open]{padding-bottom:14px}
  <div class="panel">
   <label for="nick">Your name at the table</label>
   <input id="nick" maxlength="14" autocomplete="nickname" placeholder="e.g. Goldmind">
-  <label for="code">Table code</label>
-  <div class="row"><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD" style="flex:1 1 140px;text-transform:uppercase;letter-spacing:.24em"><button class="b-brass" id="joinBtn">Join table</button></div>
-  <div class="row" style="margin-top:14px"><button class="b-ghost" id="hostBtn">Host a new table</button></div>
+  <label for="code">Table code <small>· to host, type any 4 letters you like, or leave blank for a random code</small></label>
+  <div class="row"><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="e.g. GOLD" style="flex:1 1 140px;text-transform:uppercase;letter-spacing:.24em"><button class="b-brass" id="joinBtn">Join table</button></div>
+  <div class="row" style="margin-top:14px"><button class="b-ghost" id="hostBtn">Host a table</button></div>
   <p class="err" id="err" role="status"></p>
  </div>
 </section>
@@ -160,7 +160,7 @@ details[open]{padding-bottom:14px}
   <li>Two or more In: face-offs, starting left of the dealer, dealer last. The winner moves on to the next player. Earlier face-offs are side shows (only those two see the cards); the last one is shown to everyone.</li>
   <li>Every face-off loser pays the pot size into the pot. A tie costs nothing and the earlier player moves on.</li>
   <li>The pot goes to the first player with 5+ diamonds and 2 more than everyone else.</li>
-  <li>A game is 5 rounds: 2, 3, 4, 5, then 6 cards. Then the dealer moves left and the next game starts.</li>
+  <li>A game is 5 rounds. You keep your cards all game: 2 to start, then 1 new card each round, up to 6. Then the dealer moves left and a new game starts with fresh cards.</li>
   <li>2 cards: imagine the best third card. 4 or 5 cards: your best 3 count. 6 cards: split into 1 (high card), 2 (imagine the third) and 3; win 2 of the 3 to win.</li>
  </ul>
  <p><b>Hands, best first</b></p>
@@ -304,14 +304,22 @@ async function closeTable(){if(!T||!HS)return leaveTable();LS.set('sec.'+T.code,
 async function hostTable(){
  if(!$('#nick').value.trim()){$('#nick').focus();$('#err').textContent='Pick a name first.';return}
  ME.nick=cleanNick($('#nick').value);
+ const want=$('#code').value.toUpperCase().replace(/[^A-Z]/g,'');
+ if(want&&want.length!==4){$('#err').textContent='Your code needs exactly 4 letters, or leave it blank for a random one.';$('#code').focus();return}
  $('#err').textContent='Setting up your table…';
- for(const i of[0,1]){
-  const code=newCode(i);let L;
+ const tries=want?[want]:[newCode(0),newCode(1)];
+ for(const code of tries){
+  let L;
   try{L=await link(code)}catch(e){if(e.message==='nolib'){$('#err').textContent='The game did not load fully. Reload the page.';return}continue}
-  if(await L.waitState(1200)){L.leave();continue}
+  const prev=await L.waitState(1500);
+  if(prev&&prev.host===ME.pid)return joinTable(code,false,L,prev);
+  if(prev&&want){await new Promise(r=>setTimeout(r,1500));
+   if(L.arr.some(p=>p.presence&&p.presence.pid===prev.host)){L.leave();$('#err').textContent='Code '+code+' is in use by another table right now. Try a different one.';return}}
+  else if(prev){L.leave();continue}
   const st={v:1,code,host:ME.pid,hostPub:{x:ME.keys.pub.x,y:ME.keys.pub.y},status:'lobby',phase:'lobby',seats:[{pid:ME.pid,nick:ME.nick}],waiting:[],
    chips:{},dia:{},pot:0,game:0,round:0,n:0,dealer:0,rid:'',active:[],decided:[],hands:{},secret:{},result:null,sent:0,deadline:0,now:Date.now()};
   try{await L.setState(st)}catch(e){L.leave();continue}
+  LS.set('lastCode',code);
   return joinTable(code,false,L,st);
  }
  $('#err').textContent=BAD_NET;
@@ -326,7 +334,7 @@ async function becomeHost(st){
  const sec=LS.get('sec.'+T.code);
  const s0=HS.st;
  if(s0.hostPub.x!==ME.keys.pub.x){s0.hostPub={x:ME.keys.pub.x,y:ME.keys.pub.y}}
- if(sec&&sec.rid===s0.rid){HS.hands=sec.hands||{};HS.acts=sec.acts||{}}
+ if(sec&&sec.rid===s0.rid){HS.hands=sec.hands||{};HS.acts=sec.acts||{};HS.deck=sec.deck||null}
  if(s0.status==='play'&&s0.phase==='reveal')HS.autoNext=Date.now()+6000;
  clearInterval(hostTimer);hostTimer=setInterval(kick,500);
  await onState(s0,true);
@@ -340,7 +348,7 @@ async function save(){
  catch(e){toast('Could not save the table ('+(e&&e.code||'error')+').')}finally{h.writing=false}
 }
 async function commit(){await onState(HS.st,true);await save()}
-function saveSecret(){if(!HS||!T)return;LS.set('sec.'+T.code,{rid:HS.st.rid,hands:HS.hands,acts:HS.acts})}
+function saveSecret(){if(!HS||!T)return;LS.set('sec.'+T.code,{rid:HS.st.rid,hands:HS.hands,acts:HS.acts,deck:HS.deck})}
 const sealFor=async(pid,obj)=>seal(await keyFor(HS.pubObj[pid]),obj);
 function cleanAct(a,pid){const st=HS.st,v=a&&a.vote==='in'?'in':'out',o={vote:v};
  if(v==='in'&&st.n===6){const h=HS.hands[pid]||[],srt=x=>x.slice().sort((p,q)=>p-q).join();o.arr=okArr(a.arr)&&srt(a.arr.flat())===srt(h)?a.arr:autoArr(h)}return o}
@@ -384,8 +392,9 @@ async function deal(again){
  const st=HS.st,alive=st.seats.filter(s=>st.chips[s.pid]>0).map(s=>s.pid);
  if(alive.length<2){endMatch(alive[0]||null,'last player with chips');return commit()}
  if(!again){st.round++;for(const p of alive){const a=Math.min(2,st.chips[p]);st.chips[p]-=a;st.pot+=a}}
- st.n=st.round+1;const d=deck();HS.hands={};HS.acts={};
- alive.forEach((p,i)=>HS.hands[p]=d.slice(i*st.n,(i+1)*st.n));
+ st.n=st.round+1;HS.acts={};
+ if(st.round===1||!HS.deck||alive.some(p=>!HS.hands[p]||HS.hands[p].length!==st.n-1)){const d=deck();HS.hands={};alive.forEach((p,i)=>HS.hands[p]=d.slice(i*st.n,(i+1)*st.n));HS.deck=d.slice(alive.length*st.n)}
+ else{const h={};for(const p of alive)h[p]=HS.hands[p].concat(HS.deck.shift());HS.hands=h}
  Object.assign(st,{rid:st.game+'.'+st.round+'.'+rnd(5),active:alive,decided:[],result:null,secret:{},hands:{},phase:'decide'});
  for(const p of alive)if(HS.pubObj[p])st.hands[p]=await sealFor(p,{rid:st.rid,cards:HS.hands[p]});
  st.sent=Date.now();st.deadline=st.sent+DUR;saveSecret();await commit();
@@ -473,7 +482,7 @@ function render(){
   if(HS)m+=`<div class="acts"><button class="b-in" data-do="start" ${N<2?'disabled':''}>Start match</button><button class="b-out" data-do="invite">Send invite</button></div>`;
  }else if(st.status==='play'&&active&&ME.hand){
   const decide=st.phase==='decide',sent=ME.sentRid===st.rid;
-  m=`<h2>Your ${st.n} cards</h2>`;
+  m=`<h2>Your ${st.n} cards</h2>${st.round>1?'<p class="info">Same cards as last round, plus 1 new card.</p>':''}`;
   if(st.n===6&&ME.arr){
    if(decide&&!sent){const ev=evalArr(ME.arr);
     m+=['Single · high card','Two · imagine the third','Three · as dealt'].map((t,i)=>`<div class="slot"><span><b>${t}</b><br><small>${esc(ev[i].lab)}</small></span><span class="cards">${ME.arr[i].map((c,j)=>cardHTML(c,ME.pick&&ME.pick[0]===i&&ME.pick[1]===j?'pick':'','button',`data-s="${i}" data-j="${j}"`)).join('')}${i===1?cardHTML(ev[1].ghost,'ghost'):''}</span></div>`).join('')
