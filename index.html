@@ -428,7 +428,8 @@ async function resolveRound(){
   const P=st.pot;let champ=ins[0],paid=0;
   for(let i=1;i<ins.length;i++){
    const c=ins[i],r=cmpHands(n,play(champ),play(c),low),w=r>0?champ:r<0?c:null,loser=w===null?null:w===champ?c:champ;
-   const d={a:champ,b:c,w,ha:play(champ),hb:play(c)};
+   const shown=h=>n===4||n===5?evalHand(h,low).cards.slice().sort((p,q)=>R(q)-R(p)||Su(p)-Su(q)):h;
+   const d={a:champ,b:c,w,ha:shown(play(champ)),hb:shown(play(c))};
    if(i===ins.length-1)res.final=d;else{res.faceoffs.push({a:champ,b:c,w});for(const p of[champ,c])(secret[p]=secret[p]||[]).push(d)}
    if(loser){const amt=Math.min(P,st.chips[loser]);st.chips[loser]-=amt;st.chips[w]+=amt;res.pays[loser]=(res.pays[loser]||0)+amt;res.gets=res.gets||{};res.gets[w]=(res.gets[w]||0)+amt;(res.xfers=res.xfers||[]).push({from:loser,to:w,amt})}
    if(w)champ=w;
