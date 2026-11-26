@@ -167,7 +167,7 @@ details[open]{padding-bottom:14px}
   <li>Everyone starts with 2,000 chips. Each round, everyone puts 2 chips in the pot.</li>
   <li>Look at your cards and tap <b>In</b> or <b>Out</b> within 1 minute (no tap counts as Out), or with no time limit if the host picks that. The host taps to start each next round.</li>
   <li>Only one player In: they get a diamond. Nobody In: the pot just carries on.</li>
-  <li>Two or more In: face-offs, starting left of the dealer, dealer last. The winner moves on to the next player. Earlier face-offs are side shows (only those two see the cards); the last one is shown to everyone.</li>
+  <li>Two or more In: face-offs, starting left of the dealer, dealer last. The winner moves on to the next player. Only the two players in a face-off see each other's cards. The one exception is the final showdown of the 6-card round, which everyone sees.</li>
   <li>Every face-off loser pays the player who beat them an amount equal to the pot. The pot itself only grows from the 2-chip entries.</li>
   <li>The pot goes to the first player with 5+ diamonds and 2 more than everyone else. That ends the match.</li>
   <li>A session can have many matches. Chips carry over from match to match. When the host ends the session, everyone sees the final tally.</li>
@@ -430,7 +430,9 @@ async function resolveRound(){
    const c=ins[i],r=cmpHands(n,play(champ),play(c),low),w=r>0?champ:r<0?c:null,loser=w===null?null:w===champ?c:champ;
    const shown=h=>n===4||n===5?evalHand(h,low).cards.slice().sort((p,q)=>R(q)-R(p)||Su(p)-Su(q)):h;
    const d={a:champ,b:c,w,ha:shown(play(champ)),hb:shown(play(c))};
-   if(i===ins.length-1)res.final=d;else{res.faceoffs.push({a:champ,b:c,w});for(const p of[champ,c])(secret[p]=secret[p]||[]).push(d)}
+   const last=i===ins.length-1;
+   if(last&&n===6)res.final=d;   // only the 6-card final showdown is shown to everyone
+   else{if(last){res.final={a:champ,b:c,w,hidden:true};d.final=true}else res.faceoffs.push({a:champ,b:c,w});for(const p of[champ,c])(secret[p]=secret[p]||[]).push(d)}
    if(loser){const amt=Math.min(P,st.chips[loser]);st.chips[loser]-=amt;st.chips[w]+=amt;res.pays[loser]=(res.pays[loser]||0)+amt;res.gets=res.gets||{};res.gets[w]=(res.gets[w]||0)+amt;(res.xfers=res.xfers||[]).push({from:loser,to:w,amt})}
    if(w)champ=w;
   }
@@ -546,8 +548,8 @@ function render(){
   if(!ins.length)r=`<h2>Everyone stayed out</h2><p>The pot carries on to the next round.</p>`;
   else if(res.solo)r=`<h2>${esc(nick(res.solo))} was the only one in</h2><p>+1 diamond. No cards shown.</p>`;
   else if(res.final){
-   const mySide=Array.isArray(ME.side)?ME.side.map(d=>`<div class="private" style="margin:0 0 14px">${showdown(Object.assign({low:res.low},d),res.n,nick,'Your side show · only you two see this')}</div>`).join(''):'';
-   r=mySide+`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+showdown(Object.assign({low:res.low},res.final),res.n,nick)+(res.low?'<p class="info">Weakest hand won this round.</p>':'');
+   const mySide=Array.isArray(ME.side)?ME.side.map(d=>`<div class="private" style="margin:0 0 14px">${showdown(Object.assign({low:res.low},d),res.n,nick,(d.final?'Your showdown':'Your side show')+' · only you two see this')}</div>`).join(''):'';
+   r=mySide+`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+(res.final.hidden?`<p class="info">Cards stay private between ${esc(nick(res.final.a))} and ${esc(nick(res.final.b))}. Only the 6-card final showdown is shown to everyone.</p>`:showdown(Object.assign({low:res.low},res.final),res.n,nick))+(res.low?'<p class="info">Weakest hand won this round.</p>':'');
    if(res.faceoffs.length)r+=`<h3>Side shows</h3><ul>${res.faceoffs.map(f=>`<li>${f.w?`${esc(nick(f.w))} beat ${esc(nick(f.w===f.a?f.b:f.a))}`:`${esc(nick(f.a))} and ${esc(nick(f.b))} tied, ${esc(nick(f.a))} moved on`}</li>`).join('')}</ul>`;
   }
   const xf=Array.isArray(res.xfers)?res.xfers:[];
