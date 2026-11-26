@@ -318,7 +318,7 @@ async function joinTable(code,quiet,L,st){
  L.pc.push(()=>{if(HS)kick();render()});
  await pushPresence();render();return true;
 }
-async function leaveTable(){if(!T)return;const t=T;T=null;S=null;HS=null;potTarget=-1;chipsShown=0;clearInterval(hostTimer);LS.set('table',null);
+async function leaveTable(){if(!T)return;const t=T;T=null;S=null;HS=null;potTarget=-1;chipsShown=0;ME.hs={};clearInterval(hostTimer);LS.set('table',null);
  render();try{await t.L.leave()}catch(e){}}
 async function closeTable(){if(!T||!HS)return leaveTable();LS.set('sec.'+T.code,null);try{await T.L.setState(null)}catch(e){}leaveTable()}
 async function hostTable(){
@@ -442,8 +442,9 @@ async function resolveRound(){
  }
  res.potAfter=st.pot;st.result=res;
  {const names={};for(const p of st.active){const se=st.seats.find(z=>z.pid===p);if(se)names[p]=se.nick}
-  st.hist=(st.hist||[]).concat([Object.assign({rid:st.rid,g:st.game,r:st.round,names},JSON.parse(JSON.stringify(res)))]).slice(-30)}st.secret={};st.phase='reveal';
+  st.hist=(st.hist||[]).concat([Object.assign({rid:st.rid,g:st.game,r:st.round,names},JSON.parse(JSON.stringify(res)))]).slice(-20)}st.secret={};st.phase='reveal';
  for(const p in secret)if(HS.pubObj[p])st.secret[p]=await sealFor(p,{rid:st.rid,list:secret[p]});
+ {const hh=st.hist[st.hist.length-1];if(hh&&hh.rid===st.rid&&Object.keys(st.secret).length)hh.sec=Object.assign({},st.secret)}
  const win=st.seats.map(s=>s.pid).find(p=>{const d=st.dia[p]||0;return d>=5&&st.seats.every(o=>o.pid===p||d-(st.dia[o.pid]||0)>=2)});
  if(win)endMatch(win,'5 diamonds, 2 clear');
  await commit();
@@ -464,6 +465,9 @@ async function onState(st,local){
  const hb=st.hands&&st.hands[ME.pid],sb=st.secret&&st.secret[ME.pid],rid=st.rid;
  try{if(hb&&hb.ct!==ME.handCt&&st.hostPub){const h=await unseal(await keyFor(st.hostPub),hb);
   if(h.rid===rid&&ME.rid===rid&&Array.isArray(h.cards)&&h.cards.every(okCard)){ME.hand=h.cards;ME.handCt=hb.ct;ME.dealtAt=Date.now();if(h.cards.length===6&&!ME.arr)ME.arr=autoArr(h.cards)}}}catch(e){}
+ ME.hs=ME.hs||{};
+ for(const h of(Array.isArray(st.hist)?st.hist:[])){const bx=h&&h.sec&&h.sec[ME.pid];if(!bx||ME.hs[h.rid]||!st.hostPub)continue;
+  try{const x=await unseal(await keyFor(st.hostPub),bx);if(x.rid===h.rid&&Array.isArray(x.list))ME.hs[h.rid]=x.list}catch(e){ME.hs[h.rid]=null}}
  try{if(sb&&sb.ct!==ME.sideCt){const x=await unseal(await keyFor(st.hostPub),sb);if(x.rid===rid&&ME.rid===rid){ME.side=x.list;ME.sideCt=sb.ct;const k='side.'+st.code,o=LS.get(k)||{};o[rid]=x.list;const ks=Object.keys(o);if(ks.length>30)delete o[ks[0]];LS.set(k,o)}}}catch(e){}
  render();
 }
@@ -570,7 +574,7 @@ function render(){
   if(R.nextElementSibling!==spot)spot.parentNode.insertBefore(R,spot);
   if(r&&res&&ME.shownRid!==st.rid){ME.shownRid=st.rid;scrollTo({top:0,behavior:calm?'auto':'smooth'})}}
  // round history, newest first (the round on screen above is left out)
- {const H=(st.hist||[]).filter(h=>!(res&&h.rid===st.rid)).slice().reverse(),SH=LS.get('side.'+st.code)||{};
+ {const H=(st.hist||[]).filter(h=>!(res&&h.rid===st.rid)).slice().reverse(),SH=Object.assign({},LS.get('side.'+st.code)||{},...Object.entries(ME.hs||{}).filter(([k,v])=>v).map(([k,v])=>({[k]:v})));
   const hn=h=>p=>(h.names&&h.names[p])||nick(p);
   const head=h=>{const n=hn(h);if(!(h.ins||[]).length)return'Everyone out';if(h.solo)return`${n(h.solo)} only one in · +◆`;const w=h.final&&h.final.w;const xf=(h.xfers||[]).map(x=>`${n(x.from)} pays ${n(x.to)} ${fmt(x.amt)}`).join(', ');return`${w?n(w)+' won':'Tie'}${xf?' · '+xf:''}`};
   $('#history').innerHTML=H.length?`<h2>Round history</h2>`+H.map(h=>`<details class="hist"><summary><span class="hr">G${h.g} · R${h.r}${h.low?' · weakest':''}</span> ${esc(head(h))}</summary>${resultHTML(h,SH[h.rid],hn(h))}</details>`).join(''):'';
