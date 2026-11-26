@@ -103,6 +103,8 @@ label{font-size:14px;color:var(--mute);display:block;margin:12px 0 6px}
 .vs{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 @media(min-width:620px){.vs{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .who{font-weight:800;margin-bottom:6px}.who.won{color:var(--brass)}
+.hist{border-top:1px solid var(--line)}.hist summary{font-weight:600;gap:8px;flex-wrap:wrap;padding:6px 0}.hist .hr{color:var(--brass);font-weight:800;white-space:nowrap}.hist[open]{padding-bottom:10px}.hist h2{font-size:20px}
+#history details{background:none;margin:0;padding:0;border-radius:0}
 .private{border:1.5px dashed var(--line);border-radius:14px;padding:12px;margin-top:12px}
 .banner{background:var(--ruby2);color:#fff;border-radius:16px;padding:16px;margin-top:12px}
 .banner h2{margin:0}
@@ -159,6 +161,7 @@ details[open]{padding-bottom:14px}
  <div class="panel" id="mine"></div>
  <div class="panel" id="results" hidden></div>
  <p class="info" id="waitList"></p>
+ <div class="panel" id="history" hidden></div>
 </section>
 
 <details id="rules">
@@ -437,7 +440,9 @@ async function resolveRound(){
    if(w)champ=w;
   }
  }
- res.potAfter=st.pot;st.result=res;st.secret={};st.phase='reveal';
+ res.potAfter=st.pot;st.result=res;
+ {const names={};for(const p of st.active){const se=st.seats.find(z=>z.pid===p);if(se)names[p]=se.nick}
+  st.hist=(st.hist||[]).concat([Object.assign({rid:st.rid,g:st.game,r:st.round,names},JSON.parse(JSON.stringify(res)))]).slice(-30)}st.secret={};st.phase='reveal';
  for(const p in secret)if(HS.pubObj[p])st.secret[p]=await sealFor(p,{rid:st.rid,list:secret[p]});
  const win=st.seats.map(s=>s.pid).find(p=>{const d=st.dia[p]||0;return d>=5&&st.seats.every(o=>o.pid===p||d-(st.dia[o.pid]||0)>=2)});
  if(win)endMatch(win,'5 diamonds, 2 clear');
@@ -447,7 +452,7 @@ function endMatch(pid,why){const st=HS.st;Object.assign(st,{status:'over',phase:
 async function endSession(){const st=HS.st;if(st.status==='play')return;const sess=st.sess||{n:0,start:{},wins:{}};
  st.tally=st.seats.map(s=>({pid:s.pid,nick:s.nick,chips:st.chips[s.pid]??2000,net:(st.chips[s.pid]??2000)-(sess.start[s.pid]??2000),wins:sess.wins[s.pid]||0})).sort((a,b)=>b.chips-a.chips);
  st.tallyN=sess.n;st.status='final';st.phase='final';await commit()}
-async function newSession(){const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];st.sess=null;st.tally=null;st.chips={};st.dia={};
+async function newSession(){const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];st.sess=null;st.tally=null;st.hist=[];st.chips={};st.dia={};
  for(const s of st.seats){st.chips[s.pid]=2000;st.dia[s.pid]=0}Object.assign(st,{status:'lobby',phase:'lobby',pot:0,result:null,winner:null});await commit()}
 function tallyText(st){return`Five Diamonds · table ${st.code} · ${st.tallyN} match${st.tallyN===1?'':'es'}\n`+st.tally.map((t,i)=>`${i+1}. ${t.nick}: ${t.chips} chips (${t.net>=0?'+':''}${t.net})${t.wins?`, won ${t.wins}`:''}`).join('\n')}
 
@@ -459,7 +464,7 @@ async function onState(st,local){
  const hb=st.hands&&st.hands[ME.pid],sb=st.secret&&st.secret[ME.pid],rid=st.rid;
  try{if(hb&&hb.ct!==ME.handCt&&st.hostPub){const h=await unseal(await keyFor(st.hostPub),hb);
   if(h.rid===rid&&ME.rid===rid&&Array.isArray(h.cards)&&h.cards.every(okCard)){ME.hand=h.cards;ME.handCt=hb.ct;ME.dealtAt=Date.now();if(h.cards.length===6&&!ME.arr)ME.arr=autoArr(h.cards)}}}catch(e){}
- try{if(sb&&sb.ct!==ME.sideCt){const x=await unseal(await keyFor(st.hostPub),sb);if(x.rid===rid&&ME.rid===rid){ME.side=x.list;ME.sideCt=sb.ct}}}catch(e){}
+ try{if(sb&&sb.ct!==ME.sideCt){const x=await unseal(await keyFor(st.hostPub),sb);if(x.rid===rid&&ME.rid===rid){ME.side=x.list;ME.sideCt=sb.ct;const k='side.'+st.code,o=LS.get(k)||{};o[rid]=x.list;const ks=Object.keys(o);if(ks.length>30)delete o[ks[0]];LS.set(k,o)}}}catch(e){}
  render();
 }
 async function act(vote){
@@ -483,6 +488,22 @@ function showdown(d,n,nick,title){
  const score=n===6&&okArr(d.ha)&&okArr(d.hb)?miniScore(d.ha,d.hb):null;
  const side=(p,h,k)=>`<div><div class="who ${d.w===p?'won':''}">${esc(nick(p))}${d.w===p?' wins':''}${score?` · ${score[k]} of 3`:''}</div>${handView(h,n,'sm',d.low)}</div>`;
  return`${title?`<h3>${esc(title)}</h3>`:''}<div class="vs">${side(d.a,d.ha,0)}${side(d.b,d.hb,1)}</div>${d.w?'':'<p>Tie: nobody pays.</p>'}`}
+function resultHTML(res,side,nick){
+ let r='';
+ {
+  const ins=res.ins||[];
+  if(!ins.length)r=`<h2>Everyone stayed out</h2><p>The pot carries on to the next round.</p>`;
+  else if(res.solo)r=`<h2>${esc(nick(res.solo))} was the only one in</h2><p>+1 diamond. No cards shown.</p>`;
+  else if(res.final){
+   const mySide=Array.isArray(side)?side.map(d=>`<div class="private" style="margin:0 0 14px">${showdown(Object.assign({low:res.low},d),res.n,nick,(d.final?'Your showdown':'Your side show')+' · only you two see this')}</div>`).join(''):'';
+   r=mySide+`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+(res.final.hidden?`<p class="info">Cards stay private between ${esc(nick(res.final.a))} and ${esc(nick(res.final.b))}. Only the 6-card final showdown is shown to everyone.</p>`:showdown(Object.assign({low:res.low},res.final),res.n,nick))+(res.low?'<p class="info">Weakest hand won this round.</p>':'');
+   if(res.faceoffs.length)r+=`<h3>Side shows</h3><ul>${res.faceoffs.map(f=>`<li>${f.w?`${esc(nick(f.w))} beat ${esc(nick(f.w===f.a?f.b:f.a))}`:`${esc(nick(f.a))} and ${esc(nick(f.b))} tied, ${esc(nick(f.a))} moved on`}</li>`).join('')}</ul>`;
+  }
+  const xf=Array.isArray(res.xfers)?res.xfers:[];
+  if(xf.length)r+=`<p>${xf.map(x=>`${esc(nick(x.from))} pays ${esc(nick(x.to))} <b>${fmt(x.amt)}</b>`).join(' · ')}. Pot stays at ${fmt(res.potAfter)}.</p>`;
+  const outs=Object.keys(res.votes||{}).filter(p=>res.votes[p]==='out');if(outs.length&&ins.length)r+=`<p class="info">Out: ${outs.map(p=>esc(nick(p))).join(', ')}</p>`;
+ }
+ return r}
 function render(){
  const inGame=!!(T&&S);$('#landing').hidden=inGame;$('#game').hidden=!inGame;if(!inGame)return;
  const st=S,seats=st.seats||[],N=seats.length,me=ME.pid,res=st.phase==='reveal'?st.result:null;
@@ -542,25 +563,18 @@ function render(){
  }
  const mine=$('#mine');mine.innerHTML=m;mine.classList.toggle('deal',Date.now()-ME.dealtAt<700);
  // results
- let r='';
- if(res){
-  const ins=res.ins||[];
-  if(!ins.length)r=`<h2>Everyone stayed out</h2><p>The pot carries on to the next round.</p>`;
-  else if(res.solo)r=`<h2>${esc(nick(res.solo))} was the only one in</h2><p>+1 diamond. No cards shown.</p>`;
-  else if(res.final){
-   const mySide=Array.isArray(ME.side)?ME.side.map(d=>`<div class="private" style="margin:0 0 14px">${showdown(Object.assign({low:res.low},d),res.n,nick,(d.final?'Your showdown':'Your side show')+' · only you two see this')}</div>`).join(''):'';
-   r=mySide+`<h2>${res.final.w?esc(nick(res.final.w))+' wins the showdown':'The showdown is a tie'}</h2>`+(res.final.hidden?`<p class="info">Cards stay private between ${esc(nick(res.final.a))} and ${esc(nick(res.final.b))}. Only the 6-card final showdown is shown to everyone.</p>`:showdown(Object.assign({low:res.low},res.final),res.n,nick))+(res.low?'<p class="info">Weakest hand won this round.</p>':'');
-   if(res.faceoffs.length)r+=`<h3>Side shows</h3><ul>${res.faceoffs.map(f=>`<li>${f.w?`${esc(nick(f.w))} beat ${esc(nick(f.w===f.a?f.b:f.a))}`:`${esc(nick(f.a))} and ${esc(nick(f.b))} tied, ${esc(nick(f.a))} moved on`}</li>`).join('')}</ul>`;
-  }
-  const xf=Array.isArray(res.xfers)?res.xfers:[];
-  if(xf.length)r+=`<p>${xf.map(x=>`${esc(nick(x.from))} pays ${esc(nick(x.to))} <b>${fmt(x.amt)}</b>`).join(' · ')}. Pot stays at ${fmt(res.potAfter)}.</p>`;
-  const outs=Object.keys(res.votes||{}).filter(p=>res.votes[p]==='out');if(outs.length&&ins.length)r+=`<p class="info">Out: ${outs.map(p=>esc(nick(p))).join(', ')}</p>`;
- }
+ const r=res?resultHTML(res,ME.side,nick):'';
  $('#results').innerHTML=r;$('#results').hidden=!r;
  // results first: at the very top for players who were In, right under the player cards for everyone else
  {const R=$('#results'),wasIn=!!(res&&(res.ins||[]).includes(me)),spot=wasIn?$('.potbox'):$('#mine');
   if(R.nextElementSibling!==spot)spot.parentNode.insertBefore(R,spot);
   if(r&&res&&ME.shownRid!==st.rid){ME.shownRid=st.rid;scrollTo({top:0,behavior:calm?'auto':'smooth'})}}
+ // round history, newest first (the round on screen above is left out)
+ {const H=(st.hist||[]).filter(h=>!(res&&h.rid===st.rid)).slice().reverse(),SH=LS.get('side.'+st.code)||{};
+  const hn=h=>p=>(h.names&&h.names[p])||nick(p);
+  const head=h=>{const n=hn(h);if(!(h.ins||[]).length)return'Everyone out';if(h.solo)return`${n(h.solo)} only one in · +◆`;const w=h.final&&h.final.w;const xf=(h.xfers||[]).map(x=>`${n(x.from)} pays ${n(x.to)} ${fmt(x.amt)}`).join(', ');return`${w?n(w)+' won':'Tie'}${xf?' · '+xf:''}`};
+  $('#history').innerHTML=H.length?`<h2>Round history</h2>`+H.map(h=>`<details class="hist"><summary><span class="hr">G${h.g} · R${h.r}${h.low?' · weakest':''}</span> ${esc(head(h))}</summary>${resultHTML(h,SH[h.rid],hn(h))}</details>`).join(''):'';
+  $('#history').hidden=!H.length}
  $('#waitList').textContent=(st.waiting||[]).length?'Joining next game: '+st.waiting.map(w=>w.nick).join(', '):'';
  tick();
 }
