@@ -73,7 +73,9 @@ label{font-size:14px;color:var(--mute);display:block;margin:12px 0 6px}
 .seat.me .av{box-shadow:0 0 0 3px var(--brass)}
 .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ch{color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
-.seat.gone{opacity:.45}
+.seat.gone{opacity:.45}.seat.gone:has(.kick){opacity:.7}
+.kick{position:absolute;top:5px;left:5px;min-height:0;width:28px;height:28px;padding:0;border-radius:99px;background:rgba(0,0,0,.4);color:var(--ink);font-size:18px;line-height:1;z-index:1}
+.kick[data-armed]{width:auto;padding:0 8px;background:var(--ruby2);color:#fff;font-size:12px}
 .pips{display:flex;gap:4px;justify-content:center;align-items:center;margin:3px 0 2px;font-size:12px;font-weight:800;color:var(--ruby)}
 .pip{width:8px;height:8px;transform:rotate(45deg);border:1.5px solid var(--ruby);border-radius:1px;flex:none}
 .pip.on{background:var(--ruby);box-shadow:0 0 6px rgba(255,71,112,.6)}
@@ -377,6 +379,7 @@ async function hostPeers(peers){
  const st=HS.st;let ch=false;const here=new Set();
  for(const p of peers){
   const pr=p.presence||{};if(pr.left&&typeof pr.pid==='string'){if(removeSeat(st,pr.pid.slice(0,100)))ch=true;continue}
+  if(typeof pr.pid==='string'&&(st.kicked||[]).includes(pr.pid.slice(0,100)))continue;
   if(typeof pr.pid!=='string'||!pr.pub||typeof pr.pub.x!=='string'||typeof pr.pub.y!=='string')continue;
   const pid=pr.pid.slice(0,100),nick=cleanNick(pr.nick);
   here.add(pid);
@@ -462,13 +465,14 @@ function endMatch(pid,why){const st=HS.st;Object.assign(st,{status:'over',phase:
 async function endSession(){const st=HS.st;if(st.status==='play')return;const sess=st.sess||{n:0,start:{},wins:{}};
  st.tally=st.seats.map(s=>({pid:s.pid,nick:s.nick,chips:st.chips[s.pid]??2000,net:(st.chips[s.pid]??2000)-(sess.start[s.pid]??2000),wins:sess.wins[s.pid]||0})).sort((a,b)=>b.chips-a.chips);
  st.tallyN=sess.n;st.status='final';st.phase='final';await commit()}
-async function newSession(){const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];st.sess=null;st.tally=null;st.hist=[];st.chips={};st.dia={};
+async function newSession(){const st=HS.st;st.seats=st.seats.concat(st.waiting).slice(0,MAXP);st.waiting=[];st.sess=null;st.tally=null;st.hist=[];st.kicked=[];st.chips={};st.dia={};
  for(const s of st.seats){st.chips[s.pid]=2000;st.dia[s.pid]=0}Object.assign(st,{status:'lobby',phase:'lobby',pot:0,result:null,winner:null});await commit()}
 function tallyText(st){return`Five Diamonds · table ${st.code} · ${st.tallyN} match${st.tallyN===1?'':'es'}\n`+st.tally.map((t,i)=>`${i+1}. ${t.nick}: ${t.chips} chips (${t.net>=0?'+':''}${t.net})${t.wins?`, won ${t.wins}`:''}`).join('\n')}
 
 /* ---------- every player ---------- */
 async function onState(st,local){
  if(!st||(HS&&!local))return;
+ if(!HS&&Array.isArray(st.kicked)&&st.kicked.includes(ME.pid)){toast('The host removed you from the table.');return leaveTable()}
  S=st;
  if(st.rid!==ME.rid){ME.rid=st.rid;Object.assign(ME,{hand:null,handCt:null,arr:null,pick:null,side:null,sideCt:null});if(ME.sentRid!==st.rid){ME.vote=null;ME.act=null}}
  const hb=st.hands&&st.hands[ME.pid],sb=st.secret&&st.secret[ME.pid],rid=st.rid;
@@ -534,7 +538,7 @@ function render(){
   if(res&&res.votes&&res.votes[s.pid]){const v=res.votes[s.pid];tag=`<span class="tag ${v==='in'?'in':''}">${v==='in'?'In':'Out'}</span>`;{const net=((res.gets||{})[s.pid]||0)-((res.pays||{})[s.pid]||0);if(net<0)tag+=` <span class="tag pay">−${fmt(-net)}</span>`;else if(net>0)tag+=` <span class="tag in">+${fmt(net)}</span>`}if(res.solo===s.pid)tag+=' <span class="tag pay">+◆</span>'}
   else if(st.status==='play'&&st.phase==='decide'&&(st.active||[]).includes(s.pid))tag=(st.decided||[]).includes(s.pid)?'<span class="tag ok">Ready</span>':'<span class="tag">Thinking</span>';
   else if(st.status!=='lobby'&&!(chips>0))tag='<span class="tag">Broke</span>';
-  return`<div class="seat ${s.pid===me?'me':''} ${here.has(s.pid)?'':'gone'}">${st.status!=='lobby'&&i===st.dealer?'<span class="dealer" title="Dealer">D</span>':''}<div class="av" style="--c:${COLORS[i%8]}">${esc(s.nick.slice(0,1).toUpperCase())}</div><div class="nm">${esc(s.nick)}</div><div class="ch">${fmt(chips)}</div>${st.status==='lobby'?'':pips(st.dia&&st.dia[s.pid])}${tag}</div>`}).join('');
+  return`<div class="seat ${s.pid===me?'me':''} ${here.has(s.pid)?'':'gone'}">${HS&&s.pid!==st.host?`<button class="kick" data-do="kick" data-pid="${esc(s.pid)}" aria-label="Remove ${esc(s.nick)}">×</button>`:''}${st.status!=='lobby'&&i===st.dealer?'<span class="dealer" title="Dealer">D</span>':''}<div class="av" style="--c:${COLORS[i%8]}">${esc(s.nick.slice(0,1).toUpperCase())}</div><div class="nm">${esc(s.nick)}</div><div class="ch">${fmt(chips)}</div>${st.status==='lobby'?'':pips(st.dia&&st.dia[s.pid])}${tag}</div>`}).join('');
  // your panel
  let m='';
  if(st.status==='lobby'){
@@ -627,6 +631,9 @@ $('#game').addEventListener('click',e=>{
  else if(d==='next')enqueue(()=>{HS.autoNext=0;return nextRound()});
  else if(d==='leave')closeTable();
  else if(d==='invite')invite();
+ else if(d==='kick'&&HS){const pid=b.dataset.pid;
+  if(b.dataset.armed)enqueue(async()=>{const st=HS.st;if(pid===st.host)return;st.kicked=(st.kicked||[]).concat([pid]);if(removeSeat(st,pid))await commit()});
+  else{b.dataset.armed='1';b.textContent='Remove?';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='×'}},3500)}}
  else if((d==='timer-on'||d==='timer-off')&&HS)enqueue(async()=>{if(HS.st.status==='play')return;HS.st.timed=d==='timer-on';await commit()});
  else if(d==='force'&&HS)enqueue(async()=>{if(HS.st.status==='play'&&HS.st.phase==='decide')await resolveRound()});
  else if(d==='endsess'&&HS){if(b.dataset.armed)enqueue(endSession);else{b.dataset.armed='1';b.textContent='Tap again to end';setTimeout(()=>{if(b.isConnected){delete b.dataset.armed;b.textContent='End session'}},3500)}}
