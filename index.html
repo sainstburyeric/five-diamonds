@@ -354,7 +354,7 @@ function invite(){if(!S)return;const url=location.origin+location.pathname+'?cod
 
 /* ---------- host engine: runs in the host's browser ---------- */
 async function becomeHost(st){
- HS={st:JSON.parse(JSON.stringify(st)),hands:{},acts:{},pub:{},pubObj:{},autoNext:0,writing:false,dirty:false,q:Promise.resolve(),busy:false};
+ HS={since:Date.now(),st:JSON.parse(JSON.stringify(st)),hands:{},acts:{},pub:{},pubObj:{},autoNext:0,writing:false,dirty:false,q:Promise.resolve(),busy:false};
  const sec=LS.get('sec.'+T.code);
  const s0=HS.st;
  if(s0.hostPub.x!==ME.keys.pub.x){s0.hostPub={x:ME.keys.pub.x,y:ME.keys.pub.y}}
@@ -392,6 +392,7 @@ async function hostPeers(peers){
   if(st.status==='play'&&st.phase==='decide'&&pr.act&&pr.act.rid===st.rid&&!HS.acts[pid]&&st.active.includes(pid)){
    try{const a=await unseal(await keyFor(HS.pubObj[pid]),pr.act);if(a.rid===st.rid){HS.acts[pid]=cleanAct(a,pid);if(!st.decided.includes(pid))st.decided.push(pid);ch=true;saveSecret()}}catch(e){}}
  }
+ HS.here=here;
  if(st.status==='lobby'){const n=st.seats.length;st.seats=st.seats.filter(s=>s.pid===st.host||here.has(s.pid));if(st.seats.length!==n)ch=true}
  if(ch)await commit();
 }
@@ -402,7 +403,9 @@ function removeSeat(st,pid){let ch=false;const wi=st.waiting.findIndex(s=>s.pid=
  toast(gone+' left the table.');return true}
 async function hostTick(){
  const st=HS.st;if(st.status!=='play')return;
- if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p])||(st.deadline&&Date.now()>=st.deadline)))await resolveRound();
+ // a player whose phone has dropped off (greyed out) counts as Out, so the round doesn't wait for them
+ const away=p=>p!==st.host&&HS.here&&Date.now()-HS.since>8000&&!HS.here.has(p);
+ if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p]||away(p))||(st.deadline&&Date.now()>=st.deadline)))await resolveRound();
 }
 const nextAlive=(st,i)=>{const N=st.seats.length;for(let k=1;k<=N;k++){const j=(i+k)%N;if(st.chips[st.seats[j].pid]>0)return j}return i};
 async function startMatch(){
