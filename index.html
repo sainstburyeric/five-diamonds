@@ -295,7 +295,9 @@ function link(code){return new Promise((resolve,reject)=>{
   else if(topic.startsWith(base+'/p/')){const id=topic.slice(base.length+3);if(!s)L.peers.delete(id);else{try{const p=JSON.parse(s);if(p&&typeof p==='object')L.peers.set(id,{presence:p})}catch(e){}}L.arr=[...L.peers.values()];L.pc.forEach(f=>f())}});
  L.setState=st=>new Promise((ok,no)=>c.publish(base+'/state',st==null?'':JSON.stringify(st),{qos:1,retain:true},e=>e?no(e):ok()));
  L.presence=patch=>{L.pres=Object.assign({},L.pres,patch);return new Promise(ok=>c.publish(mine,JSON.stringify(L.pres),{qos:1,retain:true},()=>ok()))};
- L.leave=()=>new Promise(ok=>{const end=()=>{try{c.end(true)}catch(e){}ok()};if(c.connected)c.publish(mine,'',{qos:1,retain:true},()=>setTimeout(end,150));else end();setTimeout(end,1500)});
+ L.leave=bye=>new Promise(ok=>{const end=()=>{try{c.end(true)}catch(e){}ok()};
+  // bye: leave a "left" note so the host removes the seat; otherwise just clear the note
+  if(c.connected)c.publish(mine,bye?JSON.stringify({pid:ME.pid,left:true}):'',{qos:1,retain:true},()=>setTimeout(end,150));else end();setTimeout(end,1500)});
  L.waitState=ms=>new Promise(ok=>{if(L.state!==undefined)return ok(L.state);const f=st=>{clearTimeout(t);L.sc=L.sc.filter(x=>x!==f);ok(st)},t=setTimeout(()=>{L.sc=L.sc.filter(x=>x!==f);ok(L.state)},ms);L.sc.push(f)});
 })}
 const BAD_NET='Could not connect. Check your internet and try again.';
@@ -318,8 +320,8 @@ async function joinTable(code,quiet,L,st){
  L.pc.push(()=>{if(HS)kick();render()});
  await pushPresence();render();return true;
 }
-async function leaveTable(){if(!T)return;const t=T;T=null;S=null;HS=null;potTarget=-1;chipsShown=0;ME.hs={};clearInterval(hostTimer);LS.set('table',null);
- render();try{await t.L.leave()}catch(e){}}
+async function leaveTable(){if(!T)return;const t=T,wasHost=!!HS;T=null;S=null;HS=null;potTarget=-1;chipsShown=0;ME.hs={};clearInterval(hostTimer);LS.set('table',null);
+ render();try{await t.L.leave(!wasHost)}catch(e){}}
 async function closeTable(){if(!T||!HS)return leaveTable();LS.set('sec.'+T.code,null);try{await T.L.setState(null)}catch(e){}leaveTable()}
 async function hostTable(){
  if(!$('#nick').value.trim()){$('#nick').focus();$('#err').textContent='Pick a name first.';return}
@@ -374,8 +376,10 @@ function cleanAct(a,pid){const st=HS.st,v=a&&a.vote==='in'?'in':'out',o={vote:v}
 async function hostPeers(peers){
  const st=HS.st;let ch=false;const here=new Set();
  for(const p of peers){
-  const pr=p.presence||{};if(typeof pr.pid!=='string'||!pr.pub||typeof pr.pub.x!=='string'||typeof pr.pub.y!=='string')continue;
-  const pid=pr.pid.slice(0,100),nick=cleanNick(pr.nick);here.add(pid);
+  const pr=p.presence||{};if(pr.left&&typeof pr.pid==='string'){if(removeSeat(st,pr.pid.slice(0,100)))ch=true;continue}
+  if(typeof pr.pid!=='string'||!pr.pub||typeof pr.pub.x!=='string'||typeof pr.pub.y!=='string')continue;
+  const pid=pr.pid.slice(0,100),nick=cleanNick(pr.nick);
+  here.add(pid);
   const seat=st.seats.find(s=>s.pid===pid)||st.waiting.find(s=>s.pid===pid);
   if(seat){if(seat.nick!==nick){seat.nick=nick;ch=true}}
   else if(st.seats.length+st.waiting.length<MAXP){(st.status==='play'?st.waiting:st.seats).push({pid,nick});if(st.status!=='play'&&st.chips[pid]==null){st.chips[pid]=2000;st.dia[pid]=0}ch=true}
@@ -388,6 +392,11 @@ async function hostPeers(peers){
  if(st.status==='lobby'){const n=st.seats.length;st.seats=st.seats.filter(s=>s.pid===st.host||here.has(s.pid));if(st.seats.length!==n)ch=true}
  if(ch)await commit();
 }
+function removeSeat(st,pid){let ch=false;const wi=st.waiting.findIndex(s=>s.pid===pid);if(wi>=0){st.waiting.splice(wi,1);ch=true}
+ const i=st.seats.findIndex(s=>s.pid===pid);if(i<0||pid===st.host)return ch;
+ const gone=st.seats[i].nick;st.seats.splice(i,1);if(i<st.dealer)st.dealer--;if(st.dealer>=st.seats.length)st.dealer=0;
+ st.active=(st.active||[]).filter(p=>p!==pid);st.decided=(st.decided||[]).filter(p=>p!==pid);if(st.hands)delete st.hands[pid];delete HS.hands[pid];
+ toast(gone+' left the table.');return true}
 async function hostTick(){
  const st=HS.st;if(st.status!=='play')return;
  if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p])||(st.deadline&&Date.now()>=st.deadline)))await resolveRound();
