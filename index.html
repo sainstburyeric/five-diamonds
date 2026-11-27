@@ -107,6 +107,8 @@ label{font-size:14px;color:var(--mute);display:block;margin:12px 0 6px}
 .who{font-weight:800;margin-bottom:6px}.who.won{color:var(--brass)}
 .hist{border-top:1px solid var(--line)}.hist summary{font-weight:600;gap:8px;flex-wrap:wrap;padding:6px 0}.hist .hr{color:var(--brass);font-weight:800;white-space:nowrap}.hist[open]{padding-bottom:10px}.hist h2{font-size:20px}
 #history details{background:none;margin:0;padding:0;border-radius:0}
+.nextbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.nextbar .info{margin-right:auto}
+button.sm{min-height:40px;padding:0 14px;font-size:15px}
 .private{border:1.5px dashed var(--line);border-radius:14px;padding:12px;margin-top:12px}
 .banner{background:var(--ruby2);color:#fff;border-radius:16px;padding:16px;margin-top:12px}
 .banner h2{margin:0}
@@ -273,7 +275,7 @@ const ME={pid:null,nick:'',keys:null,rid:null,hand:null,handCt:null,arr:null,pic
 let T=null,S=null,HS=null;
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),2600)};
 const cleanNick=x=>String(x||'').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g,'').trim().slice(0,14)||'Player';
-const pushPresence=()=>T&&T.nr.presence({pid:ME.pid,nick:ME.nick,pub:{x:ME.keys.pub.x,y:ME.keys.pub.y},act:ME.act||null}).catch(()=>{});
+const pushPresence=()=>T&&T.nr.presence({pid:ME.pid,nick:ME.nick,pub:{x:ME.keys.pub.x,y:ME.keys.pub.y},act:ME.act||null,ready:ME.ready||null}).catch(()=>{});
 
 /* ---------- live link: a free public message relay, no accounts ----------
    The table's state and each player's "here + my choice" note are kept on the relay.
@@ -393,6 +395,10 @@ async function hostPeers(peers){
    try{const a=await unseal(await keyFor(HS.pubObj[pid]),pr.act);if(a.rid===st.rid){HS.acts[pid]=cleanAct(a,pid);if(!st.decided.includes(pid))st.decided.push(pid);ch=true;saveSecret()}}catch(e){}}
  }
  HS.here=here;
+ // who still needs to tap Next before the next round starts
+ if(st.status==='play'&&st.phase==='reveal'){const rs=new Set(peers.filter(p=>p.presence&&p.presence.ready===st.rid).map(p=>p.presence.pid));
+  const need=st.seats.map(z=>z.pid).filter(p=>st.chips[p]>0&&(p===st.host||here.has(p))),ready=need.filter(p=>p===st.host?HS.hostReady===st.rid:rs.has(p));
+  if(JSON.stringify([need,ready])!==JSON.stringify([st.need,st.ready])){st.need=need;st.ready=ready;ch=true}}
  if(st.status==='lobby'){const n=st.seats.length;st.seats=st.seats.filter(s=>s.pid===st.host||here.has(s.pid));if(st.seats.length!==n)ch=true}
  if(ch)await commit();
 }
@@ -406,6 +412,7 @@ async function hostTick(){
  // a player whose phone has dropped off (greyed out) counts as Out, so the round doesn't wait for them
  const away=p=>p!==st.host&&HS.here&&Date.now()-HS.since>8000&&!HS.here.has(p);
  if(st.phase==='decide'&&(st.active.every(p=>HS.acts[p]||away(p))||(st.deadline&&Date.now()>=st.deadline)))await resolveRound();
+ else if(st.phase==='reveal'&&(st.need||[]).length&&(st.ready||[]).length===st.need.length)await nextRound();
 }
 const nextAlive=(st,i)=>{const N=st.seats.length;for(let k=1;k<=N;k++){const j=(i+k)%N;if(st.chips[st.seats[j].pid]>0)return j}return i};
 async function startMatch(){
@@ -431,7 +438,7 @@ async function deal(again){
  st.n=st.round+1;HS.acts={};
  if(st.round===1||!HS.deck||alive.some(p=>!HS.hands[p]||HS.hands[p].length!==st.n-1)){const d=deck();HS.hands={};alive.forEach((p,i)=>HS.hands[p]=d.slice(i*st.n,(i+1)*st.n));HS.deck=d.slice(alive.length*st.n)}
  else{const h={};for(const p of alive)h[p]=HS.hands[p].concat(HS.deck.shift());HS.hands=h}
- Object.assign(st,{rid:st.game+'.'+st.round+'.'+rnd(5),active:alive,decided:[],result:null,secret:{},hands:{},phase:'decide'});
+ Object.assign(st,{rid:st.game+'.'+st.round+'.'+rnd(5),active:alive,decided:[],need:[],ready:[],result:null,secret:{},hands:{},phase:'decide'});
  for(const p of alive)if(HS.pubObj[p])st.hands[p]=await sealFor(p,{rid:st.rid,cards:HS.hands[p]});
  st.sent=Date.now();st.deadline=st.timed===false?0:st.sent+DUR;saveSecret();await commit();
 }
@@ -567,8 +574,6 @@ function render(){
   m=(st.waiting||[]).some(w=>w.pid===me)?`<h2>You’re in the next game</h2><p>You’ll get 2,000 chips and be dealt in when game ${st.game+1} starts.</p>`
    :mySeat<0?`<h2>Watching</h2><p>The table is full.</p>`:!(st.chips&&st.chips[me]>0)?`<h2>Out of chips</h2><p>You can watch until the match ends.</p>`:`<h2>Dealing…</h2>`;
  }
- if(!HS&&st.status==='play'&&st.phase==='reveal')m+=`<p class="info">Waiting for ${esc(nick(st.host))} to start the ${st.round>=5?'next game':'next round'}.</p>`;
- if(HS&&st.status==='play'&&st.phase==='reveal')m+=`<div class="acts" style="grid-template-columns:1fr"><button class="b-in" data-do="next">${st.round>=5?'Start next game':'Next round'}</button></div>`;
  if(st.status==='over'){
   m=`<div class="banner"><h2>${st.winner?`${esc(nick(st.winner))} takes the pot of ${fmt(st.won)}`:'Match over'}</h2><p>${esc(st.endWhy||'')}</p></div>`;
   if(HS){const tOn=st.timed!==false;m+=`<h3>Timer</h3>`+(HS?`<div class="acts"><button class="${tOn?'b-in':'b-out'}" data-do="timer-on" aria-pressed="${tOn}">1 minute</button><button class="${tOn?'b-out':'b-in'}" data-do="timer-off" aria-pressed="${!tOn}">No limit</button></div>`:'')+`<p class="info">${tOn?'1 minute to choose In or Out each round. No tap counts as Out.':'No time limit: the round waits until everyone has chosen.'}</p>`;}
@@ -583,7 +588,9 @@ function render(){
  }
  const mine=$('#mine');mine.innerHTML=m;mine.classList.toggle('deal',Date.now()-ME.dealtAt<700);
  // results
- const r=res?resultHTML(res,ME.side,nick):'';
+ let r=res?resultHTML(res,ME.side,nick):'';
+ if(r&&st.status==='play'&&st.phase==='reveal'){const need=st.need||[],rd=st.ready||[],done=HS?HS.hostReady===st.rid:ME.ready===st.rid;
+  r+=`<div class="nextbar"><span class="info">${fmt(rd.length)} of ${fmt(need.length||st.seats.length)} ready</span>${need.includes(me)||HS?`<button class="b-in sm" data-do="ready" ${done?'disabled':''}>${done?'Ready ✓':st.round>=5?'Next game':'Next round'}</button>`:''}${HS?'<button class="b-ghost sm" data-do="next">Start now</button>':''}</div>`}
  $('#results').innerHTML=r;$('#results').hidden=!r;
  // results first: at the very top for players who were In, right under the player cards for everyone else
  {const R=$('#results'),wasIn=!!(res&&(res.ins||[]).includes(me)),spot=wasIn?$('.potbox'):$('#mine');
@@ -632,6 +639,7 @@ $('#game').addEventListener('click',e=>{
  else if(d==='auto'&&ME.hand){ME.arr=autoArr(ME.hand);ME.pick=null;render()}
  else if(d==='start')enqueue(startMatch);
  else if(d==='next')enqueue(()=>{HS.autoNext=0;return nextRound()});
+ else if(d==='ready'&&S){if(HS){HS.hostReady=S.rid;kick()}else{ME.ready=S.rid;pushPresence()}render()}
  else if(d==='leave')closeTable();
  else if(d==='invite')invite();
  else if(d==='kick'&&HS){const pid=b.dataset.pid;
